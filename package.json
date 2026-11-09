@@ -1,0 +1,40 @@
+{
+  "name": "discord-test-server",
+  "version": "0.1.0",
+  "description": "A local fake Discord (API v10 REST, Gateway, OAuth2, interactions, CDN) for end-to-end tests of bots and dashboards: guilds, members, moderation, audit log, rate limits and fault injection. No Discord account needed.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "bin": {
+    "discord-test-server": "bin/discord-test-server.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/discord-test-server.js --demo",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:red": "node scripts/verify-red.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.22.2"
+  },
+  "devDependencies": {
+    "@discordjs/rest": "^2.6.3",
+    "@discordjs/ws": "^2.0.4"
+  },
+  "author": "Anatoly Ben",
+  "types": "./src/index.d.ts"
+}
