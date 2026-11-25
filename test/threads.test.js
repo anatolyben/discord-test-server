@@ -108,7 +108,7 @@ describe('thread members', () => {
     await gcNoMembers.ready(w.app.token, I.GUILDS);
     thread = (await w.rest.post(`/channels/${w.channelId}/threads`, { name: 'room', type: 11 })).body;
   });
-  after(async () => { gc.close(); gcNoMembers.close(); await w.fake.close(); });
+  after(async () => { gc?.close(); gcNoMembers?.close(); await w.fake.close(); });
   const tm = (uid = '@me') => `/channels/${thread.id}/thread-members/${uid}`;
 
   test('PUT .../thread-members/:user adds someone: 204, THREAD_MEMBERS_UPDATE with added_members (incl. member) and member_count', async () => {

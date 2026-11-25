@@ -24,6 +24,12 @@ Develop and test your bot or dashboard offline: no Discord account, no real serv
   intents and the message-content rules. A real `@discordjs/ws` client connects unchanged.
 - **Interactions**: slash commands, buttons and modals, the 3-second deadline, follow-ups, ephemeral
   replies, and a record of what the user saw.
+- **Messages**: reactions (with custom emoji), pins, crossposting, stickers, and webhooks that
+  create, execute and edit messages.
+- **Threads and forums**: threads from messages, forum posts, thread members, and archived lists.
+- **Server features**: emoji and stickers, scheduled events, invites (look up, delete), and member
+  prune.
+- **Voice and presence**: voice-state events and moving or muting people, typing, and presence.
 - **Sign-in and install**: OAuth2 authorize, code exchange, refresh, revoke and bot install.
 - **Monetization**: SKUs, entitlements and subscriptions.
 - **Bad days**: rate limits, 5xx errors, dropped responses, slow responses, closed or invalidated
@@ -283,6 +289,41 @@ c.expireInteraction({ interactionId });
 (`/channels/:channel_id/messages/:message_id`); `path` is a prefix (or `/regex/`) of the concrete path
 after `/api/v10`.
 
+### Reactions, pins, typing, presence and voice
+
+People act through the control API; their calls use the same routes as your bot, so permissions apply
+(`pinMessage` needs `PIN_MESSAGES`; pass `force: true` to `addReaction` or `joinVoice` to skip the checks).
+
+```js
+c.addReaction({ channelId, messageId: msg.id, userId: bob.id, emoji: '👍' }); // MESSAGE_REACTION_ADD
+c.pinMessage({ channelId, messageId: msg.id, actorId: owner.id });            // CHANNEL_PINS_UPDATE + audit entry 74
+c.typing({ channelId, userId: alice.id });                                    // TYPING_START
+c.setPresence({ userId: alice.id, status: 'dnd', activities: [{ name: 'Chess', type: 0 }] }); // PRESENCE_UPDATE
+c.joinVoice({ channelId: lounge.id, userId: alice.id });                      // VOICE_STATE_UPDATE
+c.leaveVoice({ guildId, userId: alice.id });
+```
+
+### Webhooks, threads and scheduled events
+
+```js
+const hook = c.createWebhook({ channelId, name: 'Deploys' });                  // has .id and .token
+await fetch(`${fake.restUrl}/webhooks/${hook.id}/${hook.token}?wait=true`, {  // executes like Discord's
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'deployed v2' }),
+});
+c.joinThread({ threadId: thread.id, userId: bob.id });                         // THREAD_MEMBERS_UPDATE
+const event = c.createScheduledEvent({ guildId, name: 'Meetup', startTime: Date.now() + 86_400_000, endTime: Date.now() + 90_000_000, location: 'Cafe' });
+c.subscribeToEvent({ eventId: event.id, userId: alice.id });                   // GUILD_SCHEDULED_EVENT_USER_ADD
+```
+
+### Autocomplete
+
+```js
+c.registerCommand({ applicationId: app.id, command: { name: 'tag', description: 'Show a tag', options: [{ name: 'name', description: 'Tag', type: 3, autocomplete: true }] } });
+const { id } = c.runAutocomplete({ applicationId: app.id, userId: alice.id, guildId, channelId, name: 'tag', options: { name: 'wel' }, focused: 'name' });
+// …your bot answers with callback type 8…
+c.getAutocompleteChoices({ interactionId: id }); // [{ name: 'welcome', value: 'welcome' }]
+```
+
 ### Time
 
 ```js
@@ -307,11 +348,11 @@ as the body (`GET /_fake` lists them).
 | Area | Methods |
 |---|---|
 | Clock | `now`, `setNow({ time })`, `advance({ ms })` |
-| Setup | `createApplication`, `setPrivilegedIntents`, `setRedirectUris`, `createUser`, `createGuild`, `updateGuild`, `createRole`, `updateRole`, `setRolePosition`, `createChannel`, `updateChannel`, `setPermissionOverwrite`, `addMember`, `updateMember`, `setMemberRoles`, `installBot`, `setBotPermissions`, `setBotRolePosition`, `createInvite`, `registerCommand`, `listCommands`, `installForUser`, `uninstallForUser`, `setOAuthUser`, `setOAuthMode`, `createSku`, `grantEntitlement`, `updateEntitlement`, `deleteEntitlement`, `createSubscription` |
-| People | `postMessage`, `editMessage`, `deleteMessage`, `join`, `leave`, `runCommand`, `pressButton`, `submitModal`, `actAs` |
+| Setup | `createApplication`, `setPrivilegedIntents`, `setRedirectUris`, `createUser`, `createGuild`, `updateGuild`, `createRole`, `updateRole`, `setRolePosition`, `createChannel`, `updateChannel`, `setPermissionOverwrite`, `addMember`, `updateMember`, `setMemberRoles`, `installBot`, `setBotPermissions`, `setBotRolePosition`, `createInvite`, `createEmoji`, `createSticker`, `createWebhook`, `createScheduledEvent`, `registerCommand`, `listCommands`, `installForUser`, `uninstallForUser`, `setOAuthUser`, `setOAuthMode`, `createSku`, `grantEntitlement`, `updateEntitlement`, `deleteEntitlement`, `createSubscription` |
+| People | `postMessage`, `editMessage`, `deleteMessage`, `join`, `leave`, `runCommand`, `runAutocomplete`, `pressButton`, `submitModal`, `addReaction`, `removeReaction`, `pinMessage`, `unpinMessage`, `typing`, `setPresence`, `joinVoice`, `leaveVoice`, `joinThread`, `leaveThread`, `addThreadMember`, `removeThreadMember`, `updateThreadMember`, `subscribeToEvent`, `unsubscribeFromEvent`, `actAs` |
 | Staff | `kickMember`, `banMember`, `unbanMember`, `massBan`, `massKick`, `timeoutMember`, `deleteChannel`, `deleteRole`, `editRolePermissions` |
 | Faults | `injectRateLimit`, `injectError`, `injectDrop`, `injectDelay`, `injectDrift`, `clearFaults`, `removeFault`, `listFaults`, `setRateLimit`, `setRateLimitsEnabled`, `resetRateLimits`, `closeGatewaySession`, `invalidateGatewaySession`, `requestGatewayReconnect`, `requestHeartbeat`, `gatewaySessions`, `expireInteraction` |
-| Read | `getState`, `getGuild`, `getMember`, `getMembers`, `getRoles`, `getChannels`, `getBans`, `getMessages`, `getMessage`, `getPermissions`, `getAuditLog`, `getInvite`, `getRequestLog`, `getGatewayLog`, `getGatewayFramesByShard`, `getInteraction`, `listInteractions`, `getUserView`, `formatLog` |
+| Read | `getState`, `getGuild`, `getMember`, `getMembers`, `getRoles`, `getChannels`, `getBans`, `getMessages`, `getMessage`, `getPermissions`, `getAuditLog`, `getInvite`, `getRequestLog`, `getGatewayLog`, `getGatewayFramesByShard`, `getInteraction`, `listInteractions`, `getUserView`, `getAutocompleteChoices`, `getVoiceStates`, `getPresences`, `formatLog` |
 | Lifecycle | `reset`, `snapshot`, `restore` |
 
 Permissions are accepted as names (`['BAN_MEMBERS']`) or Discord bitfield strings (`'4'`).
@@ -353,7 +394,12 @@ delete, get, list, bulk-ban), audit logs (filters, pagination), AutoMod rules, i
 uploads, replies, forwards, allowed mentions; get, list, edit, delete, bulk-delete); application
 commands (global and guild, bulk overwrite); interaction callbacks, follow-ups and original-response
 edits; SKUs, entitlements (list, get, consume, test create/delete), SKU subscriptions;
-`/applications/@me`.
+`/applications/@me`. Added in 0.2: reactions (create, delete own and user, list, delete all and per
+emoji), pins (`/messages/pins` and the deprecated `/pins`), crosspost, typing indicator, guild emoji
+and stickers (`/stickers`, `/sticker-packs`), webhooks (create, list, get, modify, delete, execute,
+get/edit/delete message), scheduled events (CRUD, users), voice states (get, and `mute`, `deaf` and
+`channel_id` on Modify Guild Member), threads (from a message, forum posts, members, public, private
+and joined archived lists), invites (get, delete, list by channel) and prune (count, begin).
 
 **Rules**: permissions computed as in the docs' pseudo-code (base, `ADMINISTRATOR`, owner, overwrites
 for `@everyone`, roles, member), implicit permissions, timed-out members; role hierarchy for kick,
@@ -371,7 +417,11 @@ filtering (incl. privileged intents per application and the `MESSAGE_CONTENT` ex
 `GUILD_BAN_ADD/REMOVE`, `GUILD_ROLE_CREATE/UPDATE/DELETE`, `CHANNEL_CREATE/UPDATE/DELETE`,
 `THREAD_CREATE/UPDATE/DELETE`, `GUILD_CREATE/UPDATE/DELETE`, `GUILD_AUDIT_LOG_ENTRY_CREATE`,
 `AUTO_MODERATION_RULE_CREATE/UPDATE/DELETE`, `AUTO_MODERATION_ACTION_EXECUTION`, `INVITE_CREATE`,
-`INTERACTION_CREATE`, `ENTITLEMENT_CREATE/UPDATE/DELETE`, `SUBSCRIPTION_CREATE`.
+`INTERACTION_CREATE` (slash commands, buttons, modals and autocomplete), `ENTITLEMENT_CREATE/UPDATE/DELETE`,
+`SUBSCRIPTION_CREATE`, `MESSAGE_REACTION_ADD/REMOVE/REMOVE_ALL/REMOVE_EMOJI`, `CHANNEL_PINS_UPDATE`,
+`GUILD_EMOJIS_UPDATE`, `GUILD_STICKERS_UPDATE`, `WEBHOOKS_UPDATE`, `GUILD_SCHEDULED_EVENT_CREATE/UPDATE/DELETE`,
+`GUILD_SCHEDULED_EVENT_USER_ADD/REMOVE`, `VOICE_STATE_UPDATE`, `TYPING_START`, `PRESENCE_UPDATE`,
+`THREAD_MEMBERS_UPDATE`, `THREAD_MEMBER_UPDATE`, `INVITE_DELETE`.
 
 ## Assumptions
 
@@ -393,6 +443,22 @@ where it matters, makes it configurable. The main ones:
 - AutoMod's spam, preset and profile triggers use Discord's classifiers; here they fire only on the
   literal marker `[automod:<trigger_type>]` in the content.
 - There is no error code for an unknown AutoMod rule or subscription: `404` with code `0`.
+- Reactions: any string with a non-ASCII character counts as a unicode emoji (Discord does not publish the list);
+  removing a reaction that is not there answers `404/10014`.
+- Pins: the limit is 250 per channel (the docs' current figure); pinning twice is a `204` no-op.
+- Emoji and stickers: slot limits follow the guild's `premium_tier` (50 static and 50 animated emoji, 5 stickers at tier 0);
+  only a guild's own stickers can be sent in its messages. The fake ships no standard sticker packs.
+- Webhooks: `avatar_url` overrides are not resolved to an avatar; the username override is. Forum posts through
+  `thread_name` are not modelled (`220001`). Components are ignored unless `with_components=true`.
+- Scheduled events: nothing starts, ends or cancels by itself when the clock passes their times; change `status` through the API.
+- Voice: only people (through the control API) and moderation routes change voice state. There is no voice server, so a bot
+  cannot connect to audio, and gateway opcode 4 is not handled.
+- Presence: a bot's opcode 3 sets its own presence (invalid statuses are ignored). `invisible` is stored as `offline`.
+  A REST typing indicator from a bot is not echoed to other bots.
+- Threads: removing a user who is not a member answers `204`; getting one answers `404/10007`. Auto-archive timers do not run.
+  Thread starter messages are not created.
+- Prune: Discord uses online history; the fake counts members who joined more than `days` ago and posted nothing since.
+  Bots, the owner and the caller are never pruned.
 - Discord starts hiding unviewable channels on 16 November 2026. Get Guild Channels follows that
   date on the fake clock (`channelObfuscation`); obfuscated channel metadata over the gateway is not
   modelled.

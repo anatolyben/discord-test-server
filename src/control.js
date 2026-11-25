@@ -745,7 +745,7 @@ export class Control {
   mustMessage(c, m) { const x = this.world.message(c, m); if (!x) throw new ControlError(`unknown message ${m} in channel ${c}`); return x; }
 }
 
-const NOT_CALLABLE = new Set(['constructor', 'call', 'handleHttp', 'actAsOrThrow', 'botRole', 'mustApp', 'mustUser', 'mustGuild', 'mustChannel', 'mustRole', 'mustMember', 'mustMessage']);
+const NOT_CALLABLE = new Set(['constructor', 'call', 'handleHttp', 'actAsOrThrow', 'eventSubscription', 'botRole', 'mustApp', 'mustUser', 'mustGuild', 'mustChannel', 'mustRole', 'mustMember', 'mustMessage']);
 const CALLABLE = new Set(Object.getOwnPropertyNames(Control.prototype).filter((n) => !NOT_CALLABLE.has(n)));
 
 function appSummary(app) {

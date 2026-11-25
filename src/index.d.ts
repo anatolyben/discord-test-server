@@ -125,6 +125,30 @@ export interface Control {
   runCommand(o: { applicationId: Snowflake; userId: Snowflake; guildId?: Snowflake; channelId?: Snowflake; name: string; type?: 1 | 2 | 3; options?: Record<string, any> | DiscordObject[]; targetId?: Snowflake; locale?: string; commandId?: Snowflake }): { id: Snowflake; token: string; payload: DiscordObject };
   pressButton(o: { applicationId?: Snowflake; userId: Snowflake; channelId?: Snowflake; messageId: Snowflake; customId: string; values?: string[]; locale?: string }): { id: Snowflake; token: string; payload: DiscordObject };
   submitModal(o: { interactionId: Snowflake; userId?: Snowflake; values?: Record<string, string>; locale?: string }): { id: Snowflake; token: string; payload: DiscordObject };
+  runAutocomplete(o: { applicationId: Snowflake; userId: Snowflake; guildId?: Snowflake; channelId?: Snowflake; name: string; type?: 1 | 2 | 3; options?: Record<string, any> | DiscordObject[]; focused?: string; locale?: string; commandId?: Snowflake }): { id: Snowflake; token: string; payload: DiscordObject };
+  getAutocompleteChoices(o: { interactionId: Snowflake }): Array<{ name: string; value: string | number }> | null;
+  /** Reactions go through the real route as that person; force: true skips the permission checks. */
+  addReaction(o: { channelId: Snowflake; messageId: Snowflake; userId: Snowflake; emoji: string; force?: boolean }): any;
+  removeReaction(o: { channelId: Snowflake; messageId: Snowflake; userId: Snowflake; emoji: string; actorId?: Snowflake }): any;
+  pinMessage(o: { channelId: Snowflake; messageId: Snowflake; actorId: Snowflake; reason?: string }): any;
+  unpinMessage(o: { channelId: Snowflake; messageId: Snowflake; actorId: Snowflake; reason?: string }): any;
+  createEmoji(o: { guildId: Snowflake; name: string; image: string; userId?: Snowflake; roles?: Snowflake[]; animated?: boolean }): DiscordObject;
+  createSticker(o: { guildId: Snowflake; name: string; description?: string; tags?: string; formatType?: number; userId?: Snowflake; data?: string }): DiscordObject;
+  createWebhook(o: { channelId: Snowflake; name: string; actorId?: Snowflake; avatar?: string }): DiscordObject;
+  createScheduledEvent(o: { guildId: Snowflake; name: string; startTime: TimeInput; endTime?: TimeInput; entityType?: 1 | 2 | 3; channelId?: Snowflake; location?: string; description?: string; creatorId?: Snowflake }): DiscordObject;
+  subscribeToEvent(o: { eventId: Snowflake; userId: Snowflake }): { changed: boolean };
+  unsubscribeFromEvent(o: { eventId: Snowflake; userId: Snowflake }): { changed: boolean };
+  joinVoice(o: { channelId: Snowflake; userId: Snowflake; selfMute?: boolean; selfDeaf?: boolean; selfVideo?: boolean; selfStream?: boolean; force?: boolean }): DiscordObject | null;
+  leaveVoice(o: { userId: Snowflake; guildId: Snowflake }): { left: boolean };
+  getVoiceStates(o: { guildId: Snowflake }): DiscordObject[];
+  joinThread(o: { threadId: Snowflake; userId: Snowflake; force?: boolean }): any;
+  leaveThread(o: { threadId: Snowflake; userId: Snowflake }): any;
+  addThreadMember(o: { threadId: Snowflake; userId: Snowflake; actorId: Snowflake }): any;
+  removeThreadMember(o: { threadId: Snowflake; userId: Snowflake; actorId: Snowflake }): any;
+  updateThreadMember(o: { threadId: Snowflake; userId: Snowflake; flags?: number }): { ok: true };
+  typing(o: { channelId: Snowflake; userId: Snowflake; force?: boolean }): { ok: true };
+  setPresence(o: { userId: Snowflake; status?: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline'; activities?: Array<{ name: string; type: number; [k: string]: any }>; clientStatus?: Record<string, string> }): { changed: boolean };
+  getPresences(o: { guildId: Snowflake }): DiscordObject[];
   actAs(o: { userId: Snowflake; method: string; path: string; body?: any; query?: Record<string, string>; reason?: string }): ActResult;
 
   // staff
