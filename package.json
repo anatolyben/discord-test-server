@@ -1,6 +1,6 @@
 {
   "name": "discord-test-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local Discord API server for end-to-end tests: guilds, members, moderation, audit log, interactions, rate limits and fault injection. No Discord account needed.",
   "type": "module",
   "main": "./src/index.js",
