@@ -160,7 +160,7 @@ describe('pin permissions and DMs', () => {
       assert.throws(() => w.c.pinMessage({ channelId: w.channelId, messageId: m.id, actorId: w.mod.id }), /50013/);
       w.c.updateRole({ guildId: w.guildId, roleId: w.modRole.id, permissions: ['PIN_MESSAGES', 'VIEW_AUDIT_LOG'] });
       w.c.pinMessage({ channelId: w.channelId, messageId: m.id, actorId: w.mod.id, reason: 'important' });
-      const entry = w.c.getAuditLog({ guildId: w.guildId }).find((e) => e.action_type === 74);
+      const entry = (await w.rest.get(`/guilds/${w.guildId}/audit-logs?action_type=74`)).body.audit_log_entries[0];
       assert.equal(entry.user_id, w.mod.id);
       assert.equal(entry.reason, 'important');
     } finally { await w.fake.close(); }
