@@ -1,6 +1,6 @@
 // Reactions, pins and crossposting – https://discord.com/developers/docs/resources/message
 import { Errors, assertValid, DiscordError } from '../errors.js';
-import { ChannelType, Permissions as P, MessageType, MessageFlags } from '../constants.js';
+import { ChannelType, Permissions as P, MessageType, MessageFlags, THREAD_TYPES } from '../constants.js';
 import { compareIds } from '../util.js';
 
 const DOCS = 'https://discord.com/developers/docs';
@@ -101,6 +101,13 @@ export function registerMessageExtras(r) {
     else throw Errors.cannotExecuteOnDM();
     // ASSUMPTION: no reactions with that emoji -> 404/10014, as for the single-user routes.
     if (!ctx.ops.removeEmojiReactions(c.id, m.id, emoji)) throw Errors.unknownEmoji();
+    return ctx.noContent();
+  });
+
+  // ${DOCS}/resources/channel#trigger-typing-indicator – 204. ASSUMPTION: needs SEND_MESSAGES and is not echoed to bots.
+  r.add('POST', '/channels/:channel_id/typing', (ctx) => {
+    const c = ctx.channel();
+    if (c.guild_id) ctx.require(c.guild_id, c.id, THREAD_TYPES.has(c.type) ? P.SEND_MESSAGES_IN_THREADS : P.SEND_MESSAGES);
     return ctx.noContent();
   });
 

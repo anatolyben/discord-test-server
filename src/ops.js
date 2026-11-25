@@ -574,6 +574,44 @@ export class Ops {
     return existing;
   }
 
+  // ---- typing and presence ---------------------------------------------------
+  // https://discord.com/developers/docs/events/gateway-events#typing-start
+  typing(channelId, userId) {
+    const c = this.w.channel(channelId);
+    const d = { channel_id: channelId, user_id: userId, timestamp: Math.floor(this.w.now() / 1000) };
+    if (c.guild_id) {
+      d.guild_id = c.guild_id;
+      const m = this.w.memberJSON(c.guild_id, userId);
+      if (m) d.member = m;
+    }
+    this.dispatch('TYPING_START', d, { guildId: c.guild_id ?? undefined, channelId, message: true, dmUserIds: c.type === ChannelType.DM ? c.recipients : undefined });
+  }
+
+  /**
+   * Stores a user's presence and sends PRESENCE_UPDATE in every guild they share. `invisible` is stored as `offline`.
+   * Returns false when nothing changed. https://discord.com/developers/docs/events/gateway-events#presence-update
+   */
+  setPresence(userId, { status = 'online', activities = [], clientStatus } = {}) {
+    const offline = status === 'offline' || status === 'invisible';
+    const next = {
+      status: offline ? 'offline' : status,
+      activities: offline ? [] : activities.map((a) => ({ created_at: this.w.now(), ...a })),
+      client_status: offline ? {} : (clientStatus ?? { desktop: status }),
+    };
+    const cur = this.w.state.presences[userId];
+    // created_at differs on every call, so compare without it
+    const strip = (p) => p && JSON.stringify({ ...p, activities: p.activities.map(({ created_at, ...rest }) => rest) });
+    if (strip(cur) === strip(next)) return false;
+    this.w.state.presences[userId] = next;
+    for (const g of this.w.guildsOfUser(userId)) this.dispatch('PRESENCE_UPDATE', this.presenceJSON(userId, g.id), { guildId: g.id });
+    return true;
+  }
+
+  presenceJSON(userId, guildId) {
+    const p = this.w.state.presences[userId];
+    return { user: { id: userId }, guild_id: guildId, status: p.status, activities: deepClone(p.activities), client_status: { ...p.client_status } };
+  }
+
   // ---- scheduled events ------------------------------------------------------
   // https://discord.com/developers/docs/resources/guild-scheduled-event
   createScheduledEvent(guildId, data, { actorId, reason } = {}) {

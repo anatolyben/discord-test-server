@@ -41,6 +41,7 @@ const GUILD_INTENT = {
   GUILD_SCHEDULED_EVENT_CREATE: I.GUILD_SCHEDULED_EVENTS, GUILD_SCHEDULED_EVENT_UPDATE: I.GUILD_SCHEDULED_EVENTS,
   GUILD_SCHEDULED_EVENT_DELETE: I.GUILD_SCHEDULED_EVENTS, GUILD_SCHEDULED_EVENT_USER_ADD: I.GUILD_SCHEDULED_EVENTS,
   GUILD_SCHEDULED_EVENT_USER_REMOVE: I.GUILD_SCHEDULED_EVENTS,
+  TYPING_START: I.GUILD_MESSAGE_TYPING, PRESENCE_UPDATE: I.GUILD_PRESENCES,
   VOICE_STATE_UPDATE: I.GUILD_VOICE_STATES, WEBHOOKS_UPDATE: I.GUILD_WEBHOOKS, GUILD_EMOJIS_UPDATE: I.GUILD_EXPRESSIONS, GUILD_STICKERS_UPDATE: I.GUILD_EXPRESSIONS,
   MESSAGE_REACTION_ADD: I.GUILD_MESSAGE_REACTIONS, MESSAGE_REACTION_REMOVE: I.GUILD_MESSAGE_REACTIONS,
   MESSAGE_REACTION_REMOVE_ALL: I.GUILD_MESSAGE_REACTIONS, MESSAGE_REACTION_REMOVE_EMOJI: I.GUILD_MESSAGE_REACTIONS,
@@ -49,6 +50,7 @@ const GUILD_INTENT = {
 };
 const DM_INTENT = {
   MESSAGE_CREATE: I.DIRECT_MESSAGES, MESSAGE_UPDATE: I.DIRECT_MESSAGES, MESSAGE_DELETE: I.DIRECT_MESSAGES, CHANNEL_PINS_UPDATE: I.DIRECT_MESSAGES,
+  TYPING_START: I.DIRECT_MESSAGE_TYPING,
   MESSAGE_REACTION_ADD: I.DIRECT_MESSAGE_REACTIONS, MESSAGE_REACTION_REMOVE: I.DIRECT_MESSAGE_REACTIONS,
   MESSAGE_REACTION_REMOVE_ALL: I.DIRECT_MESSAGE_REACTIONS, MESSAGE_REACTION_REMOVE_EMOJI: I.DIRECT_MESSAGE_REACTIONS,
 };
@@ -178,6 +180,11 @@ export class Gateway {
       case OP.REQUEST_SOUNDBOARD_SOUNDS:
         if (!conn.identified) return this.close(conn, CLOSE.NOT_AUTHENTICATED, 'Not authenticated.');
         if (op === OP.REQUEST_GUILD_MEMBERS) return this.requestGuildMembers(conn, d);
+        // ${DOCS}/events/gateway-events#update-presence – invalid statuses are ignored (ASSUMPTION: Discord's behaviour is not documented)
+        if (op === OP.PRESENCE_UPDATE && conn.session && ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(d?.status)) {
+          const status = d.status;
+          this.ops.setPresence(conn.session.app.bot_user_id, { status, activities: Array.isArray(d.activities) ? d.activities.filter((a) => typeof a?.name === 'string' && Number.isInteger(a.type)) : [], clientStatus: { web: status } });
+        }
         return;
       default:
         return this.close(conn, CLOSE.UNKNOWN_OPCODE, 'Unknown opcode.');
@@ -335,7 +342,7 @@ export class Gateway {
       channels: w.guildChannels(g.id).filter((c) => !THREAD_TYPES.has(c.type)).map((c) => w.channelJSON(c)),
       threads: w.guildChannels(g.id).filter((c) => THREAD_TYPES.has(c.type) && !c.thread_metadata?.archived
         && (computePermissions(w, g.id, bot, c.id) & P.VIEW_CHANNEL)).map((c) => w.channelJSON(c)),
-      presences: [],
+      presences: session.intents & I.GUILD_PRESENCES && !large ? memberIds.filter((id) => w.state.presences[id]).map((id) => this.ops.presenceJSON(id, g.id)) : [],
       stage_instances: [],
       guild_scheduled_events: Object.values(g.scheduled_events ?? {}).map((e) => w.scheduledEventJSON(e)),
       soundboard_sounds: [],

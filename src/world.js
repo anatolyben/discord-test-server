@@ -22,6 +22,7 @@ export function emptyState() {
     subscriptions: {},
     attachments: {}, // attachmentId -> { …, data: base64 }
     webhooks: {}, // webhookId -> webhook
+    presences: {}, // userId -> { status, activities, client_status }
     oauth: { codes: {}, access: {}, refresh: {} },
     userInstalls: {}, // applicationId -> { userId -> { installed_at, scopes } }
   };

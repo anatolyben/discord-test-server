@@ -399,6 +399,31 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  /** A person starts typing: TYPING_START. Needs SEND_MESSAGES in the channel unless force: true. */
+  typing({ channelId, userId, force = false }) {
+    const c = this.mustChannel(channelId);
+    this.mustUser(userId);
+    if (c.guild_id) {
+      if (!this.world.member(c.guild_id, userId)) throw new ControlError(`user ${userId} is not a member of guild ${c.guild_id}`);
+      if (!force && !(computePermissions(this.world, c.guild_id, userId, c.id) & (THREAD_TYPES.has(c.type) ? P.SEND_MESSAGES_IN_THREADS : P.SEND_MESSAGES))) {
+        throw new ControlError(`user ${userId} cannot type in ${channelId}: missing SEND_MESSAGES`, { status: 403, body: { code: 50013 } });
+      }
+    } else if (!c.recipients?.includes(userId) && !force) throw new ControlError(`user ${userId} is not in DM ${channelId}`);
+    this.ops.typing(channelId, userId);
+    return { ok: true };
+  }
+  /** Sets what other people see for a user: status (online, idle, dnd, invisible, offline), activities [{ name, type }], clientStatus. */
+  setPresence({ userId, status = 'online', activities = [], clientStatus }) {
+    this.mustUser(userId);
+    if (!['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status)) throw new ControlError(`invalid status "${status}" (online, idle, dnd, invisible or offline)`);
+    for (const a of activities) if (typeof a?.name !== 'string' || !Number.isInteger(a.type)) throw new ControlError('each activity needs a string name and an integer type');
+    return { changed: this.ops.setPresence(userId, { status, activities, clientStatus }) };
+  }
+  getPresences({ guildId }) {
+    const g = this.mustGuild(guildId);
+    return Object.keys(g.members).filter((uid) => this.world.state.presences[uid]).map((uid) => this.ops.presenceJSON(uid, guildId));
+  }
+
   /** Creates a scheduled event directly (no permission checks). entityType: 1 stage, 2 voice, 3 external (needs location and endTime). */
   createScheduledEvent({ guildId, name, startTime, endTime, entityType = 3, channelId, location, description, creatorId }) {
     this.mustGuild(guildId);
