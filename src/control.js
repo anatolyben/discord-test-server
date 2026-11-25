@@ -399,6 +399,26 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  /** Creates a scheduled event directly (no permission checks). entityType: 1 stage, 2 voice, 3 external (needs location and endTime). */
+  createScheduledEvent({ guildId, name, startTime, endTime, entityType = 3, channelId, location, description, creatorId }) {
+    this.mustGuild(guildId);
+    const ev = this.ops.createScheduledEvent(guildId, {
+      name, description, start: new Date(startTime).getTime(), end: endTime ? new Date(endTime).getTime() : null, entity_type: entityType,
+      channel_id: entityType === 3 ? null : channelId, entity_metadata: entityType === 3 ? { location } : null, creator_id: creatorId,
+    }, { actorId: creatorId });
+    return this.world.scheduledEventJSON(ev, { withUserCount: true });
+  }
+  /** A person marks themselves as interested: GUILD_SCHEDULED_EVENT_USER_ADD. */
+  subscribeToEvent({ eventId, userId }) { return this.eventSubscription(eventId, userId, true); }
+  unsubscribeFromEvent({ eventId, userId }) { return this.eventSubscription(eventId, userId, false); }
+  eventSubscription(eventId, userId, on) {
+    this.mustUser(userId);
+    const g = Object.values(this.world.state.guilds).find((x) => x.scheduled_events?.[eventId]);
+    if (!g) throw new ControlError(`unknown scheduled event ${eventId}`);
+    if (!g.members[userId]) throw new ControlError(`user ${userId} is not a member of guild ${g.id}`);
+    return { changed: this.ops.setEventSubscription(g.id, eventId, userId, on) };
+  }
+
   /**
    * A person joins, moves between, or changes self flags in voice channels: VOICE_STATE_UPDATE.
    * Needs CONNECT in the channel unless force: true. Only voice and stage channels can be joined.

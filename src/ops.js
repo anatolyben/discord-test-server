@@ -574,6 +574,67 @@ export class Ops {
     return existing;
   }
 
+  // ---- scheduled events ------------------------------------------------------
+  // https://discord.com/developers/docs/resources/guild-scheduled-event
+  createScheduledEvent(guildId, data, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    g.scheduled_events ??= {};
+    const ev = {
+      id: data.id ?? this.w.id(), guild_id: guildId, channel_id: data.channel_id ?? null, creator_id: data.creator_id ?? actorId ?? null,
+      name: data.name, description: data.description ?? null, start: data.start, end: data.end ?? null, status: 1,
+      entity_type: data.entity_type, entity_metadata: data.entity_metadata ?? null, image: data.image ?? null, recurrence_rule: data.recurrence_rule ?? null, users: [],
+    };
+    g.scheduled_events[ev.id] = ev;
+    this.audit(guildId, { actorId: actorId ?? ev.creator_id, action_type: A.GUILD_SCHEDULED_EVENT_CREATE, target_id: ev.id, reason, changes: [
+      { key: 'name', new_value: ev.name }, { key: 'entity_type', new_value: ev.entity_type }, { key: 'privacy_level', new_value: 2 }, { key: 'status', new_value: 1 },
+      ...(ev.channel_id ? [{ key: 'channel_id', new_value: ev.channel_id }] : []),
+    ] });
+    this.dispatch('GUILD_SCHEDULED_EVENT_CREATE', this.w.scheduledEventJSON(ev, { withUserCount: true }), { guildId });
+    return ev;
+  }
+
+  updateScheduledEvent(guildId, eventId, patch, { actorId, reason } = {}) {
+    const ev = this.w.guild(guildId).scheduled_events[eventId];
+    const changes = [];
+    const set = (key, field, value, norm = (x) => x) => {
+      if (value === undefined || JSON.stringify(ev[field]) === JSON.stringify(value)) return;
+      changes.push({ key, old_value: norm(ev[field]), new_value: norm(value) });
+      ev[field] = value;
+    };
+    const iso = (ms) => (ms == null ? ms : this.w.iso(ms));
+    set('name', 'name', patch.name);
+    set('description', 'description', patch.description);
+    set('scheduled_start_time', 'start', patch.start, iso);
+    set('scheduled_end_time', 'end', patch.end, iso);
+    set('entity_type', 'entity_type', patch.entity_type);
+    set('channel_id', 'channel_id', patch.channel_id);
+    set('entity_metadata', 'entity_metadata', patch.entity_metadata);
+    set('status', 'status', patch.status);
+    if (patch.image !== undefined) ev.image = patch.image;
+    if (patch.recurrence_rule !== undefined) ev.recurrence_rule = patch.recurrence_rule;
+    this.audit(guildId, { actorId, action_type: A.GUILD_SCHEDULED_EVENT_UPDATE, target_id: eventId, reason, changes });
+    this.dispatch('GUILD_SCHEDULED_EVENT_UPDATE', this.w.scheduledEventJSON(ev, { withUserCount: true }), { guildId });
+    return ev;
+  }
+
+  deleteScheduledEvent(guildId, eventId, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    const ev = g.scheduled_events[eventId];
+    delete g.scheduled_events[eventId];
+    this.audit(guildId, { actorId, action_type: A.GUILD_SCHEDULED_EVENT_DELETE, target_id: eventId, reason, changes: [{ key: 'name', old_value: ev.name }] });
+    this.dispatch('GUILD_SCHEDULED_EVENT_DELETE', this.w.scheduledEventJSON(ev, { withUserCount: true }), { guildId });
+  }
+
+  /** Returns false if the user was already (not) subscribed. https://discord.com/developers/docs/events/gateway-events#guild-scheduled-event-user-add */
+  setEventSubscription(guildId, eventId, userId, subscribed) {
+    const ev = this.w.guild(guildId).scheduled_events[eventId];
+    const has = ev.users.includes(userId);
+    if (has === subscribed) return false;
+    ev.users = subscribed ? [...ev.users, userId] : ev.users.filter((u) => u !== userId);
+    this.dispatch(subscribed ? 'GUILD_SCHEDULED_EVENT_USER_ADD' : 'GUILD_SCHEDULED_EVENT_USER_REMOVE', { guild_scheduled_event_id: eventId, user_id: userId, guild_id: guildId }, { guildId });
+    return true;
+  }
+
   // ---- voice states ----------------------------------------------------------
   // https://discord.com/developers/docs/resources/voice#voice-state-object
   voiceState(guildId, userId) { return this.w.guild(guildId)?.voice_states?.[userId]; }

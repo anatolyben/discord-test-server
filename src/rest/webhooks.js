@@ -1,5 +1,5 @@
 // Webhooks – https://discord.com/developers/docs/resources/webhook
-import { Errors, assertValid, formError } from '../errors.js';
+import { Errors, DiscordError, assertValid } from '../errors.js';
 import { ChannelType, Permissions as P, THREAD_TYPES, MessageFlags } from '../constants.js';
 import { isSnowflake } from '../util.js';
 import { messageBodySchema, createMessageFromBody } from './channels.js';
@@ -117,7 +117,8 @@ export function registerWebhookRoutes(r) {
       // "The thread will automatically be unarchived."
       if (t.thread_metadata?.archived) t.thread_metadata.archived = false;
     } else if (c.type === ChannelType.GUILD_FORUM || c.type === ChannelType.GUILD_MEDIA) {
-      throw formError('thread_name', 'BASE_TYPE_REQUIRED', 'Webhooks can only create threads in forum channels'); // ASSUMPTION: forum posts through webhooks are not modelled
+      // ${DOCS}/topics/opcodes-and-status-codes – 220001. ASSUMPTION: creating forum posts through thread_name is not modelled.
+      throw new DiscordError(400, 220001, 'Webhooks posted to forum channels must have a thread_name or thread_id');
     }
     const body = { ...ctx.body };
     // "Non-application-owned webhooks cannot send interactive components, and the components field will be ignored unless they set with_components."

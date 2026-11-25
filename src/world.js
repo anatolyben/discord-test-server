@@ -326,6 +326,20 @@ export class World extends EventEmitter {
     return out;
   }
 
+  // https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object
+  scheduledEventJSON(ev, { withUserCount = false } = {}) {
+    const out = {
+      id: ev.id, guild_id: ev.guild_id, channel_id: ev.channel_id ?? null, creator_id: ev.creator_id ?? null,
+      name: ev.name, description: ev.description ?? null,
+      scheduled_start_time: this.iso(ev.start), scheduled_end_time: ev.end ? this.iso(ev.end) : null,
+      privacy_level: 2, status: ev.status, entity_type: ev.entity_type, entity_id: null,
+      entity_metadata: ev.entity_metadata ? { ...ev.entity_metadata } : null, image: ev.image ?? null, recurrence_rule: ev.recurrence_rule ?? null,
+    };
+    if (ev.creator_id) out.creator = this.userJSON(ev.creator_id);
+    if (withUserCount) out.user_count = ev.users.length;
+    return out;
+  }
+
   // https://discord.com/developers/docs/resources/webhook#webhook-object
   webhookJSON(wh, { withUser = true, withToken = true } = {}) {
     const out = { id: wh.id, type: 1, guild_id: wh.guild_id, channel_id: wh.channel_id, name: wh.name, avatar: wh.avatar ?? null, application_id: null };
