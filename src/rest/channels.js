@@ -405,6 +405,15 @@ export function createMessageFromBody(ctx, c, body, files, opts = {}) {
   if (guildId && !opts.skipPermissionChecks && !(perms & P.EMBED_LINKS)) data.embeds = [];
   if (body.nonce !== undefined && body.nonce !== null) data.nonce = body.nonce;
   if (body.poll) data.poll = deepClone(body.poll);
+  if (body.sticker_ids?.length) {
+    // ${DOCS}/resources/message#create-message – sticker_ids. ASSUMPTION: only stickers of the channel's own guild can be sent.
+    const owned = ctx.world.guild(guildId)?.stickers ?? {};
+    data.sticker_items = body.sticker_ids.map((id) => {
+      const s = owned[String(id)];
+      if (!s) throw Errors.invalidSticker();
+      return { id: s.id, name: s.name, format_type: s.format_type };
+    });
+  }
   if (opts.applicationId) data.application_id = opts.applicationId;
   if (opts.webhookId) data.webhook_id = opts.webhookId;
   if (opts.interactionMetadata) data.interaction_metadata = opts.interactionMetadata;

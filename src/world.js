@@ -322,6 +322,20 @@ export class World extends EventEmitter {
     return out;
   }
 
+  // https://discord.com/developers/docs/resources/emoji#emoji-object – `user` only for people who may manage emoji.
+  emojiJSON(e, { withUser = false } = {}) {
+    const out = { id: e.id, name: e.name, roles: [...(e.roles ?? [])], require_colons: true, managed: false, animated: !!e.animated, available: true };
+    if (withUser && e.user_id) out.user = this.userJSON(e.user_id);
+    return out;
+  }
+
+  // https://discord.com/developers/docs/resources/sticker#sticker-object
+  stickerJSON(s, { withUser = true } = {}) {
+    const out = { id: s.id, name: s.name, description: s.description ?? null, tags: s.tags ?? '', type: 2, format_type: s.format_type ?? 1, available: true, guild_id: s.guild_id };
+    if (withUser && s.user_id) out.user = this.userJSON(s.user_id);
+    return out;
+  }
+
   // https://discord.com/developers/docs/resources/guild#guild-object
   guildJSON(g, { withCounts = false } = {}) {
     const out = {
@@ -364,8 +378,8 @@ export class World extends EventEmitter {
       latest_onboarding_question_id: null,
       nsfw: false,
       nsfw_level: g.nsfw_level ?? 0,
-      emojis: [],
-      stickers: [],
+      emojis: Object.values(g.emojis ?? {}).map((e) => this.emojiJSON(e)),
+      stickers: Object.values(g.stickers ?? {}).map((s) => this.stickerJSON(s)),
       incidents_data: null,
       inventory_settings: null,
       embed_enabled: false,

@@ -572,6 +572,75 @@ export class Ops {
     return existing;
   }
 
+  // ---- emoji and stickers ----------------------------------------------------
+  // https://discord.com/developers/docs/resources/emoji#create-guild-emoji
+  dispatchEmojis(guildId) {
+    const g = this.w.guild(guildId);
+    this.dispatch('GUILD_EMOJIS_UPDATE', { guild_id: guildId, emojis: Object.values(g.emojis ?? {}).map((e) => this.w.emojiJSON(e, { withUser: true })) }, { guildId });
+  }
+
+  createEmoji(guildId, { name, image, roles = [], animated = false, userId, id }, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    g.emojis ??= {};
+    const e = { id: id ?? this.w.id(), name, roles, animated, user_id: userId ?? actorId ?? null, image };
+    g.emojis[e.id] = e;
+    this.audit(guildId, { actorId: actorId ?? userId, action_type: A.EMOJI_CREATE, target_id: e.id, reason, changes: [{ key: 'name', new_value: name }] });
+    this.dispatchEmojis(guildId);
+    return e;
+  }
+
+  updateEmoji(guildId, emojiId, patch, { actorId, reason } = {}) {
+    const e = this.w.guild(guildId).emojis[emojiId];
+    const changes = [];
+    if (patch.name !== undefined && patch.name !== e.name) { changes.push({ key: 'name', old_value: e.name, new_value: patch.name }); e.name = patch.name; }
+    if (patch.roles !== undefined) { changes.push({ key: 'roles', old_value: [...e.roles], new_value: [...(patch.roles ?? [])] }); e.roles = patch.roles ?? []; }
+    this.audit(guildId, { actorId, action_type: A.EMOJI_UPDATE, target_id: emojiId, reason, changes });
+    this.dispatchEmojis(guildId);
+    return e;
+  }
+
+  deleteEmoji(guildId, emojiId, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    const e = g.emojis[emojiId];
+    delete g.emojis[emojiId];
+    this.audit(guildId, { actorId, action_type: A.EMOJI_DELETE, target_id: emojiId, reason, changes: [{ key: 'name', old_value: e.name }] });
+    this.dispatchEmojis(guildId);
+  }
+
+  dispatchStickers(guildId) {
+    const g = this.w.guild(guildId);
+    this.dispatch('GUILD_STICKERS_UPDATE', { guild_id: guildId, stickers: Object.values(g.stickers ?? {}).map((s) => this.w.stickerJSON(s)) }, { guildId });
+  }
+
+  createSticker(guildId, { name, description, tags, format_type = 1, userId, data, contentType, id }, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    g.stickers ??= {};
+    const s = { id: id ?? this.w.id(), name, description: description || null, tags, format_type, guild_id: guildId, user_id: userId ?? actorId ?? null, content_type: contentType, data };
+    g.stickers[s.id] = s;
+    this.audit(guildId, { actorId: actorId ?? userId, action_type: A.STICKER_CREATE, target_id: s.id, reason, changes: [{ key: 'name', new_value: name }, { key: 'tags', new_value: tags }, { key: 'description', new_value: s.description ?? '' }] });
+    this.dispatchStickers(guildId);
+    return s;
+  }
+
+  updateSticker(guildId, stickerId, patch, { actorId, reason } = {}) {
+    const s = this.w.guild(guildId).stickers[stickerId];
+    const changes = [];
+    for (const k of ['name', 'description', 'tags']) {
+      if (patch[k] !== undefined && patch[k] !== s[k]) { changes.push({ key: k, old_value: s[k] ?? '', new_value: patch[k] ?? '' }); s[k] = patch[k]; }
+    }
+    this.audit(guildId, { actorId, action_type: A.STICKER_UPDATE, target_id: stickerId, reason, changes });
+    this.dispatchStickers(guildId);
+    return s;
+  }
+
+  deleteSticker(guildId, stickerId, { actorId, reason } = {}) {
+    const g = this.w.guild(guildId);
+    const s = g.stickers[stickerId];
+    delete g.stickers[stickerId];
+    this.audit(guildId, { actorId, action_type: A.STICKER_DELETE, target_id: stickerId, reason, changes: [{ key: 'name', old_value: s.name }] });
+    this.dispatchStickers(guildId);
+  }
+
   // ---- pins ------------------------------------------------------------------
   // https://discord.com/developers/docs/resources/message#pin-message
   pinnedMessages(channelId) {

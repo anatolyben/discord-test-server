@@ -396,6 +396,15 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  createEmoji({ guildId, name, image, userId, roles, animated }) {
+    this.mustGuild(guildId);
+    return this.world.emojiJSON(this.ops.createEmoji(guildId, { name, image, roles: roles ?? [], animated: animated ?? /^data:image\/gif/.test(image ?? ''), userId }, { actorId: userId }), { withUser: true });
+  }
+  createSticker({ guildId, name, description, tags = '', formatType = 1, userId, data = '' }) {
+    this.mustGuild(guildId);
+    return this.world.stickerJSON(this.ops.createSticker(guildId, { name, description, tags, format_type: formatType, userId, data: Buffer.from(data).toString('base64') }, { actorId: userId }));
+  }
+
   // ---- reactions and pins (as a person, through the real routes; force: true skips permission checks) ----
   addReaction({ channelId, messageId, userId, emoji, force = false }) {
     this.mustUser(userId);

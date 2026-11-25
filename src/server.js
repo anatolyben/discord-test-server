@@ -3,6 +3,7 @@ import { Router, Ctx } from './rest/context.js';
 import { registerGuildRoutes, inviteJSON } from './rest/guilds.js';
 import { registerChannelRoutes } from './rest/channels.js';
 import { registerMessageExtras } from './rest/messages-extra.js';
+import { registerExpressionRoutes } from './rest/expressions.js';
 import { registerAppRoutes } from './rest/apps.js';
 import { Interactions } from './interactions.js';
 import { Gateway } from './gateway.js';
@@ -35,6 +36,7 @@ export class FakeServer {
     registerGuildRoutes(this.router);
     registerChannelRoutes(this.router);
     registerMessageExtras(this.router);
+    registerExpressionRoutes(this.router);
     registerAppRoutes(this.router);
     this.interactions.register(this.router);
     world.cdnSign = (a) => this.signAttachment(a);
