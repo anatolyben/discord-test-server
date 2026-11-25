@@ -139,7 +139,8 @@ export function registerGuildRoutes(r) {
   r.add('GET', '/guilds/:guild_id/threads/active', (ctx) => {
     const g = ctx.guild();
     const threads = ctx.world.guildChannels(g.id).filter((c) => THREAD_TYPES.has(c.type) && !c.thread_metadata?.archived);
-    return ctx.ok({ threads: threads.map((c) => ctx.world.channelJSON(c)), members: [] });
+    const me = ctx.actorId;
+    return ctx.ok({ threads: threads.map((c) => ctx.world.channelJSON(c)), members: me ? threads.map((c) => ctx.ops.threadMemberJSON(c, me)).filter(Boolean) : [] });
   });
 
   const overwriteSchema = {

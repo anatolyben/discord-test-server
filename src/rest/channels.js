@@ -248,16 +248,6 @@ export function registerChannelRoutes(r) {
     return ctx.ok(ctx.server.inviteJSON(inv));
   }, { audit: true });
 
-  // ${DOCS}/resources/channel#start-thread-from-message / #start-thread-without-message
-  r.add('POST', '/channels/:channel_id/threads', (ctx) => {
-    const c = ctx.channel();
-    assertValid(ctx.body, { name: { type: 'string', required: true, minLength: 1, maxLength: 100 }, type: { type: 'int', choices: [10, 11, 12] }, auto_archive_duration: { type: 'int', choices: [60, 1440, 4320, 10080] } });
-    const type = ctx.body.type ?? ChannelType.PRIVATE_THREAD;
-    ctx.require(c.guild_id, c.id, type === ChannelType.PRIVATE_THREAD ? P.CREATE_PRIVATE_THREADS : P.CREATE_PUBLIC_THREADS);
-    const t = ctx.ops.createChannel(c.guild_id, { name: ctx.body.name, type, parent_id: c.id, owner_id: ctx.actorId, auto_archive_duration: ctx.body.auto_archive_duration }, { actorId: ctx.actorId, reason: ctx.reason });
-    return ctx.ok(ctx.world.channelJSON(t), 201);
-  }, { audit: true });
-
   // ---------------------------------------------------------------------------
   // Messages – ${DOCS}/resources/message
   // ---------------------------------------------------------------------------
@@ -417,6 +407,7 @@ export function createMessageFromBody(ctx, c, body, files, opts = {}) {
   if (opts.applicationId) data.application_id = opts.applicationId;
   if (opts.webhookId) data.webhook_id = opts.webhookId;
   if (opts.webhookUsername) data.webhook_username = opts.webhookUsername;
+  if (opts.messageId) data.id = opts.messageId;
   if (opts.interactionMetadata) data.interaction_metadata = opts.interactionMetadata;
 
   // ${DOCS}/resources/message#message-reference-structure

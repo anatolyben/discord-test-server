@@ -399,6 +399,25 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  /** A person joins a thread (needs the thread to be unarchived; force: true skips the visibility check). */
+  joinThread({ threadId, userId, force = false }) {
+    const c = this.mustChannel(threadId);
+    this.mustUser(userId);
+    if (!THREAD_TYPES.has(c.type)) throw new ControlError(`channel ${threadId} is not a thread`);
+    if (force) { this.ops.addThreadMember(threadId, userId); return { ok: true }; }
+    return this.actAsOrThrow(userId, 'PUT', `/channels/${threadId}/thread-members/@me`);
+  }
+  leaveThread({ threadId, userId }) { return this.actAsOrThrow(userId, 'DELETE', `/channels/${threadId}/thread-members/@me`); }
+  /** Someone with the right permissions adds or removes another member (through the real routes). */
+  addThreadMember({ threadId, userId, actorId }) { return this.actAsOrThrow(actorId, 'PUT', `/channels/${threadId}/thread-members/${userId}`); }
+  removeThreadMember({ threadId, userId, actorId }) { return this.actAsOrThrow(actorId, 'DELETE', `/channels/${threadId}/thread-members/${userId}`); }
+  /** Changes a thread member's flags; THREAD_MEMBER_UPDATE reaches the bot only when it is that member. */
+  updateThreadMember({ threadId, userId, flags }) {
+    this.mustChannel(threadId);
+    if (!this.ops.updateThreadMember(threadId, userId, { flags })) throw new ControlError(`user ${userId} is not a member of thread ${threadId}`);
+    return { ok: true };
+  }
+
   /** A person starts typing: TYPING_START. Needs SEND_MESSAGES in the channel unless force: true. */
   typing({ channelId, userId, force = false }) {
     const c = this.mustChannel(channelId);

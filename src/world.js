@@ -236,7 +236,8 @@ export class World extends EventEmitter {
       delete out.position;
       out.owner_id = c.owner_id;
       out.message_count = c.message_count ?? 0;
-      out.member_count = c.member_count ?? 1;
+      out.member_count = c.thread_members ? Math.min(50, Object.keys(c.thread_members).length) : (c.member_count ?? 1);
+      if (c.applied_tags) out.applied_tags = [...c.applied_tags];
       out.total_message_sent = c.total_message_sent ?? 0;
       out.thread_metadata = {
         archived: !!c.thread_metadata?.archived,

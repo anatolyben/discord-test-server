@@ -343,6 +343,8 @@ export class Ops {
     };
     if (THREAD_TYPES.has(type)) {
       channel.owner_id = data.owner_id;
+      channel.thread_members = data.owner_id ? { [data.owner_id]: { join_timestamp: this.w.now(), flags: 0 } } : {};
+      if (data.applied_tags) channel.applied_tags = [...data.applied_tags];
       channel.thread_metadata = { archived: false, auto_archive_duration: data.auto_archive_duration ?? 1440, locked: false };
       delete channel.permission_overwrites;
     }
@@ -572,6 +574,49 @@ export class Ops {
     // https://discord.com/developers/docs/events/gateway-events#message-delete-bulk
     this.dispatch('MESSAGE_DELETE_BULK', { ids: existing, channel_id: channelId, guild_id: c.guild_id }, { guildId: c.guild_id, channelId });
     return existing;
+  }
+
+  // ---- thread members --------------------------------------------------------
+  // https://discord.com/developers/docs/resources/channel#thread-member-object
+  threadMemberJSON(thread, userId, { withMember = false } = {}) {
+    const tm = thread.thread_members?.[userId];
+    if (!tm) return null;
+    const out = { id: thread.id, user_id: userId, join_timestamp: this.w.iso(tm.join_timestamp), flags: tm.flags ?? 0 };
+    if (withMember) { const m = this.w.memberJSON(thread.guild_id, userId); if (m) out.member = m; }
+    return out;
+  }
+
+  /** Returns false if the user already was a member. THREAD_MEMBERS_UPDATE: https://discord.com/developers/docs/events/gateway-events#thread-members-update */
+  addThreadMember(threadId, userId) {
+    const c = this.w.channel(threadId);
+    c.thread_members ??= {};
+    if (c.thread_members[userId]) return false;
+    c.thread_members[userId] = { join_timestamp: this.w.now(), flags: 0 };
+    this.dispatch('THREAD_MEMBERS_UPDATE', {
+      id: threadId, guild_id: c.guild_id, member_count: Math.min(50, Object.keys(c.thread_members).length),
+      added_members: [this.threadMemberJSON(c, userId, { withMember: true })],
+    }, { guildId: c.guild_id, channelId: threadId, threadUserIds: [userId] });
+    return true;
+  }
+
+  removeThreadMember(threadId, userId) {
+    const c = this.w.channel(threadId);
+    if (!c.thread_members?.[userId]) return false;
+    delete c.thread_members[userId];
+    this.dispatch('THREAD_MEMBERS_UPDATE', {
+      id: threadId, guild_id: c.guild_id, member_count: Math.min(50, Object.keys(c.thread_members).length), removed_member_ids: [userId],
+    }, { guildId: c.guild_id, channelId: threadId, threadUserIds: [userId] });
+    return true;
+  }
+
+  /** Changes a member's settings; THREAD_MEMBER_UPDATE goes only to the bot that is that member. */
+  updateThreadMember(threadId, userId, { flags }) {
+    const c = this.w.channel(threadId);
+    const tm = c.thread_members?.[userId];
+    if (!tm) return false;
+    if (flags !== undefined) tm.flags = flags;
+    this.dispatch('THREAD_MEMBER_UPDATE', { ...this.threadMemberJSON(c, userId, { withMember: true }), guild_id: c.guild_id }, { guildId: c.guild_id, onlyBotUserId: userId });
+    return true;
   }
 
   // ---- typing and presence ---------------------------------------------------

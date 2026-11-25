@@ -33,7 +33,7 @@ const GUILD_INTENT = {
   GUILD_CREATE: I.GUILDS, GUILD_UPDATE: I.GUILDS, GUILD_DELETE: I.GUILDS,
   GUILD_ROLE_CREATE: I.GUILDS, GUILD_ROLE_UPDATE: I.GUILDS, GUILD_ROLE_DELETE: I.GUILDS,
   CHANNEL_CREATE: I.GUILDS, CHANNEL_UPDATE: I.GUILDS, CHANNEL_DELETE: I.GUILDS, CHANNEL_PINS_UPDATE: I.GUILDS,
-  THREAD_CREATE: I.GUILDS, THREAD_UPDATE: I.GUILDS, THREAD_DELETE: I.GUILDS, THREAD_LIST_SYNC: I.GUILDS,
+  THREAD_CREATE: I.GUILDS, THREAD_UPDATE: I.GUILDS, THREAD_DELETE: I.GUILDS, THREAD_LIST_SYNC: I.GUILDS, THREAD_MEMBERS_UPDATE: I.GUILDS, THREAD_MEMBER_UPDATE: I.GUILDS,
   GUILD_MEMBER_ADD: I.GUILD_MEMBERS, GUILD_MEMBER_UPDATE: I.GUILD_MEMBERS, GUILD_MEMBER_REMOVE: I.GUILD_MEMBERS,
   GUILD_AUDIT_LOG_ENTRY_CREATE: I.GUILD_MODERATION, GUILD_BAN_ADD: I.GUILD_MODERATION, GUILD_BAN_REMOVE: I.GUILD_MODERATION,
   INVITE_CREATE: I.GUILD_INVITES, INVITE_DELETE: I.GUILD_INVITES,
@@ -375,6 +375,7 @@ export class Gateway {
     const app = s.app;
     const bot = app.bot_user_id;
     if (ev.applicationId && ev.applicationId !== app.id) return undefined;
+    if (ev.onlyBotUserId && ev.onlyBotUserId !== bot) return undefined;
 
     // DMs: shard 0 only – ${DOCS}/events/gateway#sharding ("DMs will only be sent to shard 0")
     if (ev.dmUserIds) {
@@ -402,6 +403,8 @@ export class Gateway {
       const selfUpdate = ev.t === 'GUILD_MEMBER_UPDATE' && ev.subjectUserId === bot;
       if (!selfUpdate && !(s.intents & intent)) return undefined;
     }
+    // ${DOCS}/events/gateway-events#thread-members-update – without GUILD_MEMBERS only sent if the bot itself was added or removed
+    if (ev.t === 'THREAD_MEMBERS_UPDATE' && !(s.intents & I.GUILD_MEMBERS) && !ev.threadUserIds?.includes(bot)) return undefined;
     if (ev.guildId && !ev.toRemovedBot && !ev.appEvent) {
       const perms = computePermissions(w, ev.guildId, bot);
       // ${DOCS}/events/gateway-events#guild-audit-log-entry-create – requires VIEW_AUDIT_LOG

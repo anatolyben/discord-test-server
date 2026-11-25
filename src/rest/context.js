@@ -82,6 +82,8 @@ export class Ctx {
     const g = this.world.guild(c.guild_id);
     if (this.actorId && !g.members[this.actorId]) throw Errors.missingAccess();
     if (requireView && this.actorId && !has(this.perms(c.guild_id, c.id), P.VIEW_CHANNEL)) throw Errors.missingAccess();
+    // https://discord.com/developers/docs/topics/threads#private-threads – only members and MANAGE_THREADS can see them
+    if (requireView && this.actorId && c.type === ChannelType.PRIVATE_THREAD && !c.thread_members?.[this.actorId] && !has(this.perms(c.guild_id, c.id), P.MANAGE_THREADS)) throw Errors.missingAccess();
     return c;
   }
 
