@@ -1,40 +1,53 @@
 # discord-test-server
 
-**A local fake Discord for end-to-end tests: API v10 REST, the Gateway, OAuth2, interactions and the CDN.**\
-Test your bot and your dashboard offline: no Discord account, no real servers, no tokens to leak.
+**A local Discord API server for end-to-end tests.**\
+Develop and test your bot or dashboard offline: no Discord account, no real servers, no tokens to leak.
 
 [![Discord API v10](https://img.shields.io/badge/Discord%20API-v10-5865f2?logo=discord&logoColor=white)](https://discord.com/developers/docs)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Node >= 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
+[![npm](https://img.shields.io/npm/v/discord-test-server)](https://www.npmjs.com/package/discord-test-server)
+[![Dependencies: 1](https://img.shields.io/badge/dependencies-1-brightgreen)](package.json)
+[![License: MIT](https://img.shields.io/npm/l/discord-test-server)](LICENSE)
+[![Node >= 20](https://img.shields.io/node/v/discord-test-server)](package.json)
 
-[Install](#install) · [Quick start](#quick-start) · [Recipes](#recipes) · [Control API](#control-api) ·
-[What matches Discord](#what-matches-discord) · [Assumptions](#assumptions)
+[Install](#install) · [Quick start](#quick-start) · [Guide](#in-a-test-suite) ·
+[Recipes](#recipes) · [Reference](#control-api)
 
 ---
 
 ## What you can test
 
 - **Moderation**: kicks, bans with message deletion, bulk bans, timeouts up to 28 days, role
-  changes, bulk message deletion, with Discord's permission maths, role hierarchy and error codes
-  (`50013`, `50001`, `10007`, `50034`, `50035`, `500000`, …).
-- **The audit log**: every write leaves the entry Discord would leave, with the actor and the
-  `X-Audit-Log-Reason`, and sends `GUILD_AUDIT_LOG_ENTRY_CREATE`.
-- **The gateway**: `HELLO`, `IDENTIFY`, `READY`, `GUILD_CREATE`, heartbeats, close codes, sharding,
-  `RESUME` with replay, `RECONNECT`, `INVALID_SESSION`, intent filtering and the message-content
-  rules. A real `@discordjs/ws` client connects to it unchanged.
-- **Interactions**: slash commands, buttons and modals delivered as `INTERACTION_CREATE`, the
-  3-second deadline, 15-minute follow-ups, ephemeral replies, guild and user installs, and a record
-  of what the user saw ("This interaction failed" included).
-- **Sign-in and install**: `/oauth2/authorize` (auto-approve or a consent page), code exchange,
-  refresh, revoke, and bot install with the requested permissions.
-- **Monetization**: SKUs, entitlements (incl. test entitlements), subscriptions and their events.
-- **Bad days**: rate limits (per route and global), 5xx, dropped responses after a write, slow
-  responses, closed or invalidated gateway sessions, expired interaction tokens, permissions that
-  change between two calls, and a staff member who deletes the channels.
-- **Time**: a clock the test controls, so message age, timeouts, token expiry and rate-limit windows
-  are testable.
+  changes and bulk message deletion, with Discord's permission maths, role hierarchy and error codes.
+- **The audit log**: every write leaves the entry Discord would, with the actor and the
+  `X-Audit-Log-Reason`.
+- **The gateway**: `READY`, `GUILD_CREATE`, heartbeats, close codes, sharding, `RESUME`, `RECONNECT`,
+  intents and the message-content rules. A real `@discordjs/ws` client connects unchanged.
+- **Interactions**: slash commands, buttons and modals, the 3-second deadline, follow-ups, ephemeral
+  replies, and a record of what the user saw.
+- **Sign-in and install**: OAuth2 authorize, code exchange, refresh, revoke and bot install.
+- **Monetization**: SKUs, entitlements and subscriptions.
+- **Bad days**: rate limits, 5xx errors, dropped responses, slow responses, closed or invalidated
+  gateway sessions, permissions that change between two calls, and a staff member who deletes the
+  channels.
+- **Time**: a clock your test controls.
 
-It never talks to Discord. Everything is in memory and gone when the process ends.
+It never talks to Discord and runs as often as you like in CI.
+
+<details>
+<summary><b>All sections</b></summary>
+
+**Start:** [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works)
+
+**Guide:** [Run it from the command line](#run-it-from-the-command-line) ·
+[In a test suite](#in-a-test-suite) · [Pointing discord.js at it](#pointing-discordjs-at-it) ·
+[Pointing a dashboard at it](#pointing-a-dashboard-at-it) · [Recipes](#recipes)
+
+**Reference:** [Control API](#control-api) · [Options](#options) ·
+[What matches Discord](#what-matches-discord) · [Assumptions](#assumptions)
+
+**More:** [Testing this package](#testing-this-package)
+
+</details>
 
 ## Install
 
@@ -42,9 +55,79 @@ It never talks to Discord. Everything is in memory and gone when the process end
 npm install --save-dev discord-test-server
 ```
 
-Node 20 or newer. One dependency (`ws`).
+Requires Node.js 20 or newer. One runtime dependency (`ws`). Everything lives in memory and is gone
+when the server stops. The control API answers anyone who can reach its port, so keep it on localhost.
 
 ## Quick start
+
+A discord.js bot that deletes links and bans whoever posted them, tested end to end:
+
+```js
+import { createFakeDiscord } from 'discord-test-server';
+import { Client, GatewayIntentBits, Events } from 'discord.js';
+
+const fake = await createFakeDiscord({ port: 0 });
+const c = fake.control;
+const owner = c.createUser({ username: 'owner' });
+const ann = c.createUser({ username: 'ann' });
+const app = c.createApplication({ name: 'ModBot', privilegedIntents: { messageContent: true } });
+const guild = c.createGuild({ name: 'Test', ownerId: owner.id });
+c.addMember({ guildId: guild.id, userId: ann.id });
+c.installBot({ applicationId: app.id, guildId: guild.id, permissions: ['MANAGE_MESSAGES', 'BAN_MEMBERS'] });
+
+// Your bot, unchanged except for where it sends its API calls.
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  rest: { api: fake.apiUrl, cdn: fake.cdnUrl },
+});
+client.on(Events.MessageCreate, async (message) => {
+  if (/https?:\/\//.test(message.content)) {
+    await message.delete();
+    await message.member.ban({ reason: 'link spam' });
+  }
+});
+await client.login(app.token);
+
+// Discord's side, played by the test.
+const spam = c.postMessage({ channelId: guild.system_channel_id, authorId: ann.id, content: 'cheap followers http://example.com' });
+
+// Then wait for what the bot did: it runs asynchronously.
+while (!c.getBans({ guildId: guild.id }).length) await new Promise((r) => setTimeout(r, 25));
+
+console.log('message deleted:', !c.getMessages({ channelId: guild.system_channel_id }).some((m) => m.id === spam.id));
+console.log('banned:', c.getBans({ guildId: guild.id }).map((b) => b.user.username));
+console.log('audit log:', c.getAuditLog({ guildId: guild.id }).slice(-2).map((e) => e.action_type));
+
+await client.destroy();
+await fake.close();
+```
+
+With `discord.js` installed, save it as `quickstart.mjs` and run `node quickstart.mjs`. It prints
+that the message is deleted, that `ann` is banned, and the last two audit-log entries (`72`, the
+deleted message, and `22`, the ban). Like every example here, it is an ES module: use `.mjs`, or
+`"type": "module"` in your `package.json`.
+
+Your own bot needs two changes: log in with `app.token`, and pass `rest: { api: fake.apiUrl, cdn: fake.cdnUrl }`.
+The gateway address comes from the fake. Other libraries only need their API base URL set to `fake.apiUrl`.
+
+## How it works
+
+- **One process, one port.** REST, gateway, OAuth2, CDN and the control API share a port; the
+  control API lives under `/_fake` and never mixes with Discord paths.
+- **A world model** of applications (each with a bot user, token, client secret and public key),
+  users, guilds, roles, members, channels and threads, messages, bans, invites, AutoMod rules, the
+  audit log, application commands, interactions, SKUs, entitlements and subscriptions. Several
+  guilds and applications coexist and are isolated as on Discord.
+- **IDs are snowflakes** (strings) that encode their creation time against the Discord epoch.
+- **The clock** is `'real'` (wall clock, shiftable) or `'manual'` (frozen; only `control.setNow` /
+  `control.advance` move it). With `'manual'` and the same `seed`, the same script gives the same
+  ids, tokens and logs.
+- **Every write** updates the world, appends the audit-log entry and sends the gateway dispatches,
+  whether it came from your bot or from a person scripted through the control API.
+- **Logs**: every REST request and every gateway frame (in and out, per session and shard) is kept;
+  `GET /_fake/log.txt` prints them readably.
+
+## Run it from the command line
 
 From the command line, with a seeded demo world:
 
@@ -64,7 +147,9 @@ Demo world
   ...
 ```
 
-From code, in a test:
+## In a test suite
+
+With `node:test` (any runner works):
 
 ```js
 import { test, after } from 'node:test';
@@ -124,23 +209,6 @@ With `@discordjs/ws` directly: `new WebSocketManager({ token, intents, rest: new
 Send people to `${fake.oauthUrl}/authorize?client_id=…&scope=identify%20guilds%20bot&permissions=…&redirect_uri=…&response_type=code&state=…`
 and exchange the code at `${fake.apiUrl}/oauth2/token`. The fake auto-approves as the user set with
 `control.setOAuthUser({ userId, guildId })`, or shows a small consent page in `oauth: { mode: 'consent' }`.
-
-## How it works
-
-- **One process, one port.** REST, gateway, OAuth2, CDN and the control API share a port; the
-  control API lives under `/_fake` and never mixes with Discord paths.
-- **A world model** of applications (each with a bot user, token, client secret and public key),
-  users, guilds, roles, members, channels and threads, messages, bans, invites, AutoMod rules, the
-  audit log, application commands, interactions, SKUs, entitlements and subscriptions. Several
-  guilds and applications coexist and are isolated as on Discord.
-- **IDs are snowflakes** (strings) that encode their creation time against the Discord epoch.
-- **The clock** is `'real'` (wall clock, shiftable) or `'manual'` (frozen; only `control.setNow` /
-  `control.advance` move it). With `'manual'` and the same `seed`, the same script gives the same
-  ids, tokens and logs.
-- **Every write** updates the world, appends the audit-log entry and sends the gateway dispatches,
-  whether it came from your bot or from a person scripted through the control API.
-- **Logs**: every REST request and every gateway frame (in and out, per session and shard) is kept;
-  `GET /_fake/log.txt` prints them readably.
 
 ## Recipes
 
@@ -328,12 +396,6 @@ where it matters, makes it configurable. The main ones:
 - Discord starts hiding unviewable channels on 16 November 2026. Get Guild Channels follows that
   date on the fake clock (`channelObfuscation`); obfuscated channel metadata over the gateway is not
   modelled.
-
-## Not covered
-
-Voice, presences, stickers, emojis, scheduled events, stage instances, webhooks other than
-interaction webhooks, threads beyond create/modify/delete, reactions and pins. Requests to them
-answer `404`.
 
 ## Testing this package
 
