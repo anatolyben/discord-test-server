@@ -396,6 +396,12 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  /** A webhook created by a person or the system; returns it with its token (execute it over HTTP at /api/v10/webhooks/:id/:token). */
+  createWebhook({ channelId, name, actorId, avatar }) {
+    const c = this.mustChannel(channelId);
+    if (actorId) return this.actAsOrThrow(actorId, 'POST', `/channels/${channelId}/webhooks`, { body: { name, avatar } });
+    return this.world.webhookJSON(this.ops.createWebhook(c.id, { name, avatar }, {}));
+  }
   createEmoji({ guildId, name, image, userId, roles, animated }) {
     this.mustGuild(guildId);
     return this.world.emojiJSON(this.ops.createEmoji(guildId, { name, image, roles: roles ?? [], animated: animated ?? /^data:image\/gif/.test(image ?? ''), userId }, { actorId: userId }), { withUser: true });

@@ -21,6 +21,7 @@ export function emptyState() {
     entitlements: {},
     subscriptions: {},
     attachments: {}, // attachmentId -> { …, data: base64 }
+    webhooks: {}, // webhookId -> webhook
     oauth: { codes: {}, access: {}, refresh: {} },
     userInstalls: {}, // applicationId -> { userId -> { installed_at, scopes } }
   };
@@ -300,7 +301,10 @@ export class World extends EventEmitter {
         burst_colors: [],
       }));
     }
-    if (msg.webhook_id) out.webhook_id = msg.webhook_id;
+    if (msg.webhook_id) {
+      out.webhook_id = msg.webhook_id;
+      if (msg.webhook_username && out.author) out.author = { ...out.author, username: msg.webhook_username };
+    }
     if (msg.application_id) out.application_id = msg.application_id;
     if (msg.nonce !== undefined) out.nonce = msg.nonce;
     if (msg.poll) out.poll = deepClone(msg.poll);
@@ -319,6 +323,14 @@ export class World extends EventEmitter {
     }
     if (msg.thread_id) out.thread = this.channelJSON(this.channel(msg.thread_id));
     if (msg.position !== undefined) out.position = msg.position;
+    return out;
+  }
+
+  // https://discord.com/developers/docs/resources/webhook#webhook-object
+  webhookJSON(wh, { withUser = true, withToken = true } = {}) {
+    const out = { id: wh.id, type: 1, guild_id: wh.guild_id, channel_id: wh.channel_id, name: wh.name, avatar: wh.avatar ?? null, application_id: null };
+    if (withToken) out.token = wh.token;
+    if (withUser && wh.creator_id) out.user = this.userJSON(wh.creator_id);
     return out;
   }
 

@@ -495,7 +495,7 @@ export class Ops {
       mention_roles: data.mention_roles ?? parsed.roles,
       mention_everyone: data.mention_everyone ?? parsed.everyone,
     };
-    for (const k of ['message_reference', 'message_snapshots', 'application_id', 'webhook_id', 'interaction_metadata', 'nonce', 'poll', 'sticker_items']) {
+    for (const k of ['message_reference', 'message_snapshots', 'application_id', 'webhook_id', 'webhook_username', 'interaction_metadata', 'nonce', 'poll', 'sticker_items']) {
       if (data[k] !== undefined) msg[k] = data[k];
     }
     // Replies mention the replied-to author unless allowed_mentions.replied_user is false.
@@ -570,6 +570,46 @@ export class Ops {
     // https://discord.com/developers/docs/events/gateway-events#message-delete-bulk
     this.dispatch('MESSAGE_DELETE_BULK', { ids: existing, channel_id: channelId, guild_id: c.guild_id }, { guildId: c.guild_id, channelId });
     return existing;
+  }
+
+  // ---- webhooks --------------------------------------------------------------
+  // https://discord.com/developers/docs/events/gateway-events#webhooks-update
+  dispatchWebhooksUpdate(guildId, channelId) {
+    this.dispatch('WEBHOOKS_UPDATE', { guild_id: guildId, channel_id: channelId }, { guildId });
+  }
+
+  createWebhook(channelId, { name, avatar = null, creatorId, id }, { actorId, reason } = {}) {
+    const c = this.w.channel(channelId);
+    const wid = id ?? this.w.id();
+    const wh = { id: wid, guild_id: c.guild_id, channel_id: channelId, name, avatar, token: this.w.secret(48), creator_id: creatorId ?? actorId ?? null };
+    this.w.state.webhooks[wid] = wh;
+    // Messages are authored by a user-shaped object with the webhook's id: https://discord.com/developers/docs/resources/message#message-object
+    this.w.state.users[wid] = { id: wid, username: name, discriminator: '0000', global_name: null, avatar, bot: true, system: false, public_flags: 0, flags: 0 };
+    this.audit(c.guild_id, { actorId: actorId ?? creatorId, action_type: A.WEBHOOK_CREATE, target_id: wid, reason, changes: [{ key: 'name', new_value: name }, { key: 'type', new_value: 1 }, { key: 'channel_id', new_value: channelId }] });
+    this.dispatchWebhooksUpdate(c.guild_id, channelId);
+    return wh;
+  }
+
+  updateWebhook(webhookId, patch, { actorId, reason } = {}) {
+    const wh = this.w.state.webhooks[webhookId];
+    const oldChannel = wh.channel_id;
+    const changes = [];
+    if (patch.name !== undefined && patch.name !== wh.name) { changes.push({ key: 'name', old_value: wh.name, new_value: patch.name }); wh.name = patch.name; }
+    if (patch.avatar !== undefined) { wh.avatar = patch.avatar; changes.push({ key: 'avatar_hash', new_value: patch.avatar }); }
+    if (patch.channel_id !== undefined && patch.channel_id !== wh.channel_id) { changes.push({ key: 'channel_id', old_value: wh.channel_id, new_value: patch.channel_id }); wh.channel_id = patch.channel_id; }
+    if (this.w.state.users[webhookId]) { this.w.state.users[webhookId].username = wh.name; this.w.state.users[webhookId].avatar = wh.avatar; }
+    this.audit(wh.guild_id, { actorId, action_type: A.WEBHOOK_UPDATE, target_id: webhookId, reason, changes });
+    this.dispatchWebhooksUpdate(wh.guild_id, wh.channel_id);
+    if (oldChannel !== wh.channel_id) this.dispatchWebhooksUpdate(wh.guild_id, oldChannel);
+    return wh;
+  }
+
+  deleteWebhook(webhookId, { actorId, reason } = {}) {
+    const wh = this.w.state.webhooks[webhookId];
+    delete this.w.state.webhooks[webhookId];
+    // The webhook's user stays so that its old messages keep their author.
+    this.audit(wh.guild_id, { actorId, action_type: A.WEBHOOK_DELETE, target_id: webhookId, reason, changes: [{ key: 'name', old_value: wh.name }, { key: 'type', old_value: 1 }, { key: 'channel_id', old_value: wh.channel_id }] });
+    this.dispatchWebhooksUpdate(wh.guild_id, wh.channel_id);
   }
 
   // ---- emoji and stickers ----------------------------------------------------

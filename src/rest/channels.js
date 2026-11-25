@@ -416,6 +416,7 @@ export function createMessageFromBody(ctx, c, body, files, opts = {}) {
   }
   if (opts.applicationId) data.application_id = opts.applicationId;
   if (opts.webhookId) data.webhook_id = opts.webhookId;
+  if (opts.webhookUsername) data.webhook_username = opts.webhookUsername;
   if (opts.interactionMetadata) data.interaction_metadata = opts.interactionMetadata;
 
   // ${DOCS}/resources/message#message-reference-structure
