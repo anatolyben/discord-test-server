@@ -309,17 +309,49 @@ export function registerGuildRoutes(r) {
       ctx.requireAbove(g.id, userId);
       patch.communication_disabled_until = body.communication_disabled_until;
     }
-    if (body.mute !== undefined || body.deaf !== undefined || body.channel_id !== undefined) {
-      // "Will throw a 400 error if the user is not in a voice channel" – the fake has no voice states.
-      throw new DiscordError(400, 40032, 'Target user is not connected to voice');
+    if (body.mute != null || body.deaf != null || body.channel_id !== undefined) {
+      // ${DOCS}/resources/guild#modify-guild-member – "Will throw a 400 error if the user is not in a voice channel";
+      // moving needs MOVE_MEMBERS plus CONNECT on the target channel.
+      const vs = ctx.ops.voiceState(g.id, userId);
+      if (body.mute != null) ctx.require(g.id, vs?.channel_id, P.MUTE_MEMBERS);
+      if (body.deaf != null) ctx.require(g.id, vs?.channel_id, P.DEAFEN_MEMBERS);
+      let target;
+      if (body.channel_id !== undefined) {
+        ctx.require(g.id, vs?.channel_id, P.MOVE_MEMBERS);
+        if (body.channel_id !== null) {
+          target = ctx.channel(body.channel_id);
+          if (target.guild_id !== g.id || (target.type !== ChannelType.GUILD_VOICE && target.type !== ChannelType.GUILD_STAGE_VOICE)) throw Errors.channelType();
+          ctx.require(g.id, target.id, P.CONNECT);
+        }
+      }
+      if (!vs) throw new DiscordError(400, 40032, 'Target user is not connected to voice');
+      if (body.mute != null) patch.mute = body.mute;
+      if (body.deaf != null) patch.deaf = body.deaf;
+      patch.__voice = { moveTo: body.channel_id };
     }
     if (body.flags !== undefined) {
       ctx.requireAny(g.id, null, P.MANAGE_GUILD, P.MANAGE_ROLES, P.MODERATE_MEMBERS | P.KICK_MEMBERS | P.BAN_MEMBERS);
       patch.flags = body.flags;
     }
-    ctx.ops.updateMember(g.id, userId, patch, { actorId: ctx.actorId, reason: ctx.reason });
+    const { __voice: voice, ...memberPatch } = patch;
+    ctx.ops.updateMember(g.id, userId, memberPatch, { actorId: ctx.actorId, reason: ctx.reason });
+    if (voice) {
+      if (voice.moveTo !== undefined) ctx.ops.moveMemberVoice(g.id, userId, voice.moveTo, { actorId: ctx.actorId, reason: ctx.reason });
+      else ctx.ops.setVoiceState(g.id, userId, {});
+    }
     return ctx.ok(ctx.world.memberJSON(g.id, userId));
   }, { audit: true });
+
+  // ${DOCS}/resources/voice#get-current-user-voice-state, #get-user-voice-state
+  const voiceStateRoute = (ctx) => {
+    const g = ctx.guild();
+    const uid = ctx.params.user_id === '@me' ? ctx.actorId : ctx.params.user_id;
+    const vs = ctx.ops.voiceState(g.id, uid);
+    if (!vs) throw Errors.unknownVoiceState();
+    return ctx.ok(ctx.ops.voiceStateJSON(g.id, uid, vs));
+  };
+  r.add('GET', '/guilds/:guild_id/voice-states/@me', (ctx) => { ctx.params.user_id = '@me'; return voiceStateRoute(ctx); });
+  r.add('GET', '/guilds/:guild_id/voice-states/:user_id', voiceStateRoute);
 
   // ${DOCS}/resources/guild#add-guild-member-role
   r.add('PUT', '/guilds/:guild_id/members/:user_id/roles/:role_id', (ctx) => {

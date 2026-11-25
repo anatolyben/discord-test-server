@@ -135,6 +135,7 @@ export class Ops {
     if (!g?.members[userId]) return false;
     const app = this.w.appByBotUser(userId);
     if (kick) this.audit(guildId, { actorId, action_type: A.MEMBER_KICK, target_id: userId, reason });
+    this.setVoiceState(guildId, userId, { channelId: null });
     delete g.members[userId];
     // https://discord.com/developers/docs/events/gateway-events#guild-member-remove
     this.dispatch('GUILD_MEMBER_REMOVE', { guild_id: guildId, user: this.w.userJSON(userId) }, { guildId });
@@ -438,6 +439,7 @@ export class Ops {
     const c = this.w.channel(channelId);
     const json = this.w.channelJSON(c);
     const guildId = c.guild_id;
+    for (const [uid, vs] of Object.entries(this.w.guild(guildId)?.voice_states ?? {})) if (vs.channel_id === channelId) this.setVoiceState(guildId, uid, { channelId: null });
     // Children of a deleted category lose their parent.
     if (c.type === ChannelType.GUILD_CATEGORY) {
       for (const child of this.w.guildChannels(guildId).filter((x) => x.parent_id === channelId)) {
@@ -570,6 +572,70 @@ export class Ops {
     // https://discord.com/developers/docs/events/gateway-events#message-delete-bulk
     this.dispatch('MESSAGE_DELETE_BULK', { ids: existing, channel_id: channelId, guild_id: c.guild_id }, { guildId: c.guild_id, channelId });
     return existing;
+  }
+
+  // ---- voice states ----------------------------------------------------------
+  // https://discord.com/developers/docs/resources/voice#voice-state-object
+  voiceState(guildId, userId) { return this.w.guild(guildId)?.voice_states?.[userId]; }
+
+  voiceStateJSON(guildId, userId, vs = this.voiceState(guildId, userId), { withMember = true, withGuild = true } = {}) {
+    const m = this.w.member(guildId, userId);
+    const out = {
+      channel_id: vs.channel_id, user_id: userId, session_id: vs.session_id,
+      deaf: !!m?.deaf, mute: !!m?.mute, self_deaf: !!vs.self_deaf, self_mute: !!vs.self_mute, self_video: !!vs.self_video,
+      suppress: !!vs.suppress, request_to_speak_timestamp: vs.request_to_speak_timestamp ?? null,
+    };
+    if (vs.self_stream) out.self_stream = true;
+    if (withGuild) out.guild_id = guildId;
+    if (withMember && m) out.member = this.w.memberJSON(guildId, userId);
+    return out;
+  }
+
+  /**
+   * Join, move, change flags of, or (channelId: null) leave a voice channel. Sends VOICE_STATE_UPDATE when something changed.
+   * Returns the voice state JSON (or null after leaving / when there was nothing to leave).
+   * https://discord.com/developers/docs/events/gateway-events#voice-state-update
+   */
+  setVoiceState(guildId, userId, { channelId, selfMute, selfDeaf, selfVideo, selfStream, suppress } = {}) {
+    const g = this.w.guild(guildId);
+    if (!g) return null;
+    g.voice_states ??= {};
+    const cur = g.voice_states[userId];
+    const routing = { guildId };
+    if (channelId === null) {
+      if (!cur) return null;
+      delete g.voice_states[userId];
+      this.dispatch('VOICE_STATE_UPDATE', this.voiceStateJSON(guildId, userId, { ...cur, channel_id: null }), routing);
+      return null;
+    }
+    const next = {
+      channel_id: channelId ?? cur?.channel_id,
+      session_id: cur?.session_id ?? this.w.rng.hex(32),
+      self_mute: selfMute ?? cur?.self_mute ?? false,
+      self_deaf: selfDeaf ?? cur?.self_deaf ?? false,
+      self_video: selfVideo ?? cur?.self_video ?? false,
+      self_stream: selfStream ?? cur?.self_stream ?? false,
+      suppress: suppress ?? cur?.suppress ?? false,
+      request_to_speak_timestamp: cur?.request_to_speak_timestamp ?? null,
+      server_mute: !!this.w.member(guildId, userId)?.mute,
+      server_deaf: !!this.w.member(guildId, userId)?.deaf,
+    };
+    if (!next.channel_id) return null;
+    if (cur && JSON.stringify(cur) === JSON.stringify(next)) return this.voiceStateJSON(guildId, userId);
+    g.voice_states[userId] = next;
+    const json = this.voiceStateJSON(guildId, userId);
+    this.dispatch('VOICE_STATE_UPDATE', json, routing);
+    return json;
+  }
+
+  /** A moderator moves (channelId) or disconnects (null) a member: MEMBER_MOVE / MEMBER_DISCONNECT. */
+  moveMemberVoice(guildId, userId, channelId, { actorId, reason } = {}) {
+    if (channelId === null) {
+      this.audit(guildId, { actorId, action_type: A.MEMBER_DISCONNECT, options: { count: '1' }, reason });
+    } else {
+      this.audit(guildId, { actorId, action_type: A.MEMBER_MOVE, options: { channel_id: channelId, count: '1' }, reason });
+    }
+    return this.setVoiceState(guildId, userId, { channelId });
   }
 
   // ---- webhooks --------------------------------------------------------------

@@ -399,6 +399,29 @@ export class Control {
     return out.body ?? { ok: true };
   }
 
+  /**
+   * A person joins, moves between, or changes self flags in voice channels: VOICE_STATE_UPDATE.
+   * Needs CONNECT in the channel unless force: true. Only voice and stage channels can be joined.
+   */
+  joinVoice({ channelId, userId, selfMute, selfDeaf, selfVideo, selfStream, force = false }) {
+    const c = this.mustChannel(channelId);
+    this.mustUser(userId);
+    if (c.type !== ChannelType.GUILD_VOICE && c.type !== ChannelType.GUILD_STAGE_VOICE) throw new ControlError(`channel ${channelId} is not a voice or stage channel`);
+    if (!this.world.member(c.guild_id, userId)) throw new ControlError(`user ${userId} is not a member of guild ${c.guild_id}`);
+    if (!force && !(computePermissions(this.world, c.guild_id, userId, c.id) & P.CONNECT)) throw new ControlError(`user ${userId} cannot CONNECT to ${channelId} (missing permission)`, { status: 403, body: { code: 50013 } });
+    return this.ops.setVoiceState(c.guild_id, userId, { channelId, selfMute, selfDeaf, selfVideo, selfStream });
+  }
+  leaveVoice({ userId, guildId }) {
+    this.mustGuild(guildId);
+    const was = !!this.ops.voiceState(guildId, userId);
+    this.ops.setVoiceState(guildId, userId, { channelId: null });
+    return { left: was };
+  }
+  getVoiceStates({ guildId }) {
+    this.mustGuild(guildId);
+    return Object.keys(this.world.guild(guildId).voice_states ?? {}).map((uid) => this.ops.voiceStateJSON(guildId, uid));
+  }
+
   /** A webhook created by a person or the system; returns it with its token (execute it over HTTP at /api/v10/webhooks/:id/:token). */
   createWebhook({ channelId, name, actorId, avatar }) {
     const c = this.mustChannel(channelId);
