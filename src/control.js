@@ -377,6 +377,9 @@ export class Control {
   }
 
   runCommand(opts) { return this.server.interactions.runCommand(opts); }
+  /** A person is typing into an autocomplete option: INTERACTION_CREATE type 4. */
+  runAutocomplete(opts) { return this.server.interactions.runAutocomplete(opts); }
+  getAutocompleteChoices({ interactionId }) { return this.server.interactions.autocompleteChoices(interactionId); }
   pressButton(opts) { return this.server.interactions.pressButton(opts); }
   submitModal(opts) { return this.server.interactions.submitModal(opts); }
 

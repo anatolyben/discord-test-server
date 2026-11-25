@@ -57,6 +57,46 @@ export class Interactions {
     return this.deliver({ app, type: IT.APPLICATION_COMMAND, userId, place, data, locale });
   }
 
+  /**
+   * A person types into an option with `autocomplete: true`: INTERACTION_CREATE type 4.
+   * options: { name: value } (or the array form, which may nest sub-commands and mark `focused`); focused: the name of the option being typed.
+   * https://discord.com/developers/docs/interactions/application-commands#autocomplete
+   */
+  runAutocomplete({ applicationId, userId, guildId, channelId, name, options = {}, focused, type = 1, locale = 'en-US', commandId }) {
+    const w = this.world;
+    const app = w.app(applicationId);
+    if (!app) throw new Error(`runAutocomplete: unknown application ${applicationId}`);
+    if (!w.user(userId)) throw new Error(`runAutocomplete: unknown user ${userId}`);
+    const cmd = commandId ? w.state.commands[commandId] : this.findCommand(applicationId, guildId, name, type);
+    if (!cmd) throw new Error(`runAutocomplete: application ${applicationId} has no ${guildId ? 'guild or global ' : 'global '}command "${name}" of type ${type}`);
+    const place = this.resolvePlace({ app, userId, guildId, channelId, cmd });
+    let list = Array.isArray(options) ? options : Object.entries(options).map(([n, value]) => ({ name: n, value, ...(n === focused ? { focused: true } : {}) }));
+    const walk = (defs, given) => {
+      for (const o of given) {
+        const def = defs?.find((d) => d.name === o.name);
+        if (o.options) walk(def?.options, o.options);
+        else if (o.focused && !def?.autocomplete) throw new Error(`runAutocomplete: option "${o.name}" of "${cmd.name}" was not registered with autocomplete: true`);
+      }
+    };
+    walk(cmd.options, list);
+    const hasFocus = (given) => given.some((o) => o.focused || (o.options && hasFocus(o.options)));
+    if (!hasFocus(list)) throw new Error('runAutocomplete: name the focused option with `focused` (or set focused: true on one option)');
+    const data = { id: cmd.id, name: cmd.name, type: cmd.type };
+    if (cmd.guild_id) data.guild_id = cmd.guild_id;
+    const resolved = {};
+    data.options = this.buildOptions(cmd.options ?? [], list, place.guildId, resolved, userId);
+    if (Object.keys(resolved).length) data.resolved = resolved;
+    return this.deliver({ app, type: IT.APPLICATION_COMMAND_AUTOCOMPLETE, userId, place, data, locale });
+  }
+
+  /** The choices the app last answered an autocomplete interaction with. */
+  autocompleteChoices(id) {
+    const rec = this.byId(id);
+    if (!rec) throw new Error(`unknown interaction ${id}`);
+    const last = [...rec.view].reverse().find((v) => v.kind === 'autocomplete');
+    return last ? deepClone(last.choices) : null;
+  }
+
   /** Press a button (or pick from a select) on a message the app sent. */
   pressButton({ applicationId, userId, channelId, messageId, customId, values, locale = 'en-US' }) {
     const w = this.world;
@@ -424,8 +464,16 @@ export class Interactions {
     if (type === CB.PONG && rec.type !== IT.PING) throw invalidType();
     if ((type === CB.DEFERRED_UPDATE_MESSAGE || type === CB.UPDATE_MESSAGE) && !isComponent) throw invalidType();
     if (type === CB.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT && rec.type !== IT.APPLICATION_COMMAND_AUTOCOMPLETE) throw invalidType();
+    if (rec.type === IT.APPLICATION_COMMAND_AUTOCOMPLETE && type !== CB.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT) throw invalidType();
     if (type === CB.MODAL && (rec.type === IT.MODAL_SUBMIT || rec.type === IT.PING)) throw invalidType();
     if (type === CB.CHANNEL_MESSAGE_WITH_SOURCE || type === CB.UPDATE_MESSAGE) assertValid(data, messageBodySchema);
+    if (type === CB.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT) {
+      // https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-response-object-autocomplete – max 25 choices
+      assertValid(data, { choices: { type: 'array', required: true, maxLength: 25, items: { type: 'object', fields: {
+        name: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+        value: { type: 'any', required: true },
+      } } } });
+    }
     if (type === CB.MODAL) {
       assertValid(data, {
         custom_id: { type: 'string', required: true, minLength: 1, maxLength: 100 },
