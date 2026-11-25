@@ -2,6 +2,7 @@ import http from 'node:http';
 import { Router, Ctx } from './rest/context.js';
 import { registerGuildRoutes, inviteJSON } from './rest/guilds.js';
 import { registerChannelRoutes } from './rest/channels.js';
+import { registerMessageExtras } from './rest/messages-extra.js';
 import { registerAppRoutes } from './rest/apps.js';
 import { Interactions } from './interactions.js';
 import { Gateway } from './gateway.js';
@@ -33,6 +34,7 @@ export class FakeServer {
     this.oauth = new OAuth({ world, ops, server: this, options: options.oauth ?? {} });
     registerGuildRoutes(this.router);
     registerChannelRoutes(this.router);
+    registerMessageExtras(this.router);
     registerAppRoutes(this.router);
     this.interactions.register(this.router);
     world.cdnSign = (a) => this.signAttachment(a);
@@ -267,7 +269,7 @@ export class FakeServer {
   // ---------------------------------------------------------------------------
   /** Message JSON as an app sees it over REST: no MESSAGE_CONTENT privilege -> content redacted. */
   messageForApp(msg, ctx) {
-    const json = this.world.messageJSON(msg);
+    const json = this.world.messageJSON(msg, { viewerId: ctx.actorId });
     if (ctx.actor?.kind === 'bot' && !ctx.actor.app.privileged.message_content) {
       // ${DOCS}/events/gateway#message-content-intent – applies "across the APIs"
       return this.world.redactMessage(json, ctx.actor.app.bot_user_id);

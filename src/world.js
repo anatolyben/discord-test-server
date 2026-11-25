@@ -76,6 +76,10 @@ export class World extends EventEmitter {
   member(guildId, userId) { return this.state.guilds[guildId]?.members[userId]; }
   role(guildId, roleId) { return this.state.guilds[guildId]?.roles[roleId]; }
   message(channelId, messageId) { return this.state.messages[channelId]?.[messageId]; }
+  findEmoji(id) {
+    for (const g of Object.values(this.state.guilds)) if (g.emojis?.[id]) return g.emojis[id];
+    return undefined;
+  }
   guildChannels(guildId) {
     return Object.values(this.state.channels).filter((c) => c.guild_id === guildId);
   }
@@ -262,7 +266,7 @@ export class World extends EventEmitter {
   }
 
   // https://discord.com/developers/docs/resources/message#message-object
-  messageJSON(msg, { referenced = true } = {}) {
+  messageJSON(msg, { referenced = true, viewerId } = {}) {
     const out = {
       type: msg.type,
       channel_id: msg.channel_id,
@@ -285,6 +289,17 @@ export class World extends EventEmitter {
       pinned: !!msg.pinned,
       tts: !!msg.tts,
     };
+    if (msg.reactions?.length) {
+      // https://discord.com/developers/docs/resources/message#reaction-object – `me` is relative to the caller.
+      out.reactions = msg.reactions.map((r) => ({
+        count: r.users.length,
+        count_details: { burst: 0, normal: r.users.length },
+        me: viewerId !== undefined && r.users.includes(viewerId),
+        me_burst: false,
+        emoji: { ...r.emoji },
+        burst_colors: [],
+      }));
+    }
     if (msg.webhook_id) out.webhook_id = msg.webhook_id;
     if (msg.application_id) out.application_id = msg.application_id;
     if (msg.nonce !== undefined) out.nonce = msg.nonce;

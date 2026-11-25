@@ -5,6 +5,7 @@ import {
 } from './constants.js';
 import { toBits, deepClone, compareIds } from './util.js';
 import { commandJSON, skuJSON, subscriptionJSON } from './rest/apps.js';
+import { parseEmoji } from './rest/messages-extra.js';
 
 // The control API is test-only. It lives under /_fake on HTTP and on `fake.control` in code,
 // and never shares paths with the Discord API.
@@ -394,6 +395,20 @@ export class Control {
     if (out.status >= 400) throw new ControlError(`${method} ${path} as ${userId} failed with ${out.status}: ${JSON.stringify(out.body)}`, out);
     return out.body ?? { ok: true };
   }
+
+  // ---- reactions and pins (as a person, through the real routes; force: true skips permission checks) ----
+  addReaction({ channelId, messageId, userId, emoji, force = false }) {
+    this.mustUser(userId);
+    if (!force) return this.actAsOrThrow(userId, 'PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`);
+    this.mustMessage(channelId, messageId);
+    this.ops.addReaction(channelId, messageId, userId, parseEmoji(this.world, emoji));
+    return { ok: true };
+  }
+  removeReaction({ channelId, messageId, userId, emoji, actorId }) {
+    return this.actAsOrThrow(actorId ?? userId, 'DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/${actorId && actorId !== userId ? userId : '@me'}`);
+  }
+  pinMessage({ channelId, messageId, actorId, reason }) { return this.actAsOrThrow(actorId, 'PUT', `/channels/${channelId}/messages/pins/${messageId}`, { reason }); }
+  unpinMessage({ channelId, messageId, actorId, reason }) { return this.actAsOrThrow(actorId, 'DELETE', `/channels/${channelId}/messages/pins/${messageId}`, { reason }); }
 
   // ---- hostile or careless staff (each goes through the real route as that actor) ----
   kickMember({ actorId, guildId, userId, reason }) { return this.actAsOrThrow(actorId, 'DELETE', `/guilds/${guildId}/members/${userId}`, { reason }); }

@@ -572,6 +572,112 @@ export class Ops {
     return existing;
   }
 
+  // ---- pins ------------------------------------------------------------------
+  // https://discord.com/developers/docs/resources/message#pin-message
+  pinnedMessages(channelId) {
+    return this.w.channelMessages(channelId).filter((m) => m.pinned).sort((a, b) => (b.pinned_at - a.pinned_at) || (BigInt(b.id) > BigInt(a.id) ? 1 : -1));
+  }
+
+  dispatchPinsUpdate(channelId) {
+    const c = this.w.channel(channelId);
+    const latest = this.pinnedMessages(channelId)[0];
+    const d = { channel_id: channelId, last_pin_timestamp: latest ? this.w.iso(latest.pinned_at) : null };
+    if (c.guild_id) d.guild_id = c.guild_id;
+    // https://discord.com/developers/docs/events/gateway-events#channel-pins-update
+    this.dispatch('CHANNEL_PINS_UPDATE', d, { guildId: c.guild_id ?? undefined, channelId, dmUserIds: c.type === ChannelType.DM ? c.recipients : undefined });
+  }
+
+  /** Pins a message: writes the CHANNEL_PINNED_MESSAGE system message, the MESSAGE_PIN audit entry and CHANNEL_PINS_UPDATE. */
+  pinMessage(channelId, messageId, { actorId, reason } = {}) {
+    const msg = this.w.message(channelId, messageId);
+    if (msg.pinned) return false;
+    msg.pinned = true;
+    msg.pinned_at = this.w.now();
+    const c = this.w.channel(channelId);
+    this.createMessage(channelId, {
+      authorId: actorId, type: MessageType.CHANNEL_PINNED_MESSAGE, content: '',
+      message_reference: { type: 0, message_id: messageId, channel_id: channelId, guild_id: c.guild_id ?? undefined },
+    }, { skipAutoMod: true });
+    if (c.guild_id) this.audit(c.guild_id, { actorId, action_type: A.MESSAGE_PIN, target_id: msg.author_id, options: { channel_id: channelId, message_id: messageId }, reason });
+    this.dispatchPinsUpdate(channelId);
+    return true;
+  }
+
+  unpinMessage(channelId, messageId, { actorId, reason } = {}) {
+    const msg = this.w.message(channelId, messageId);
+    if (!msg.pinned) return false;
+    msg.pinned = false;
+    delete msg.pinned_at;
+    const c = this.w.channel(channelId);
+    if (c.guild_id) this.audit(c.guild_id, { actorId, action_type: A.MESSAGE_UNPIN, target_id: msg.author_id, options: { channel_id: channelId, message_id: messageId }, reason });
+    this.dispatchPinsUpdate(channelId);
+    return true;
+  }
+
+  // https://discord.com/developers/docs/resources/message#crosspost-message – sets CROSSPOSTED and fires MESSAGE_UPDATE. The fake has no followed channels.
+  crosspostMessage(channelId, messageId) {
+    const msg = this.w.message(channelId, messageId);
+    msg.flags = (msg.flags ?? 0) | MessageFlags.CROSSPOSTED;
+    this.dispatchMessage('MESSAGE_UPDATE', msg);
+    return msg;
+  }
+
+  // ---- reactions -------------------------------------------------------------
+  // https://discord.com/developers/docs/resources/message#create-reaction
+  reactionTarget(msg) {
+    const c = this.w.channel(msg.channel_id);
+    return { guildId: msg.guild_id ?? undefined, channelId: msg.channel_id, message: true, dmUserIds: c?.type === ChannelType.DM ? c.recipients : undefined };
+  }
+
+  /** emoji: { id, name } (id null for unicode). Returns false if the user had already reacted. */
+  addReaction(channelId, messageId, userId, emoji) {
+    const msg = this.w.message(channelId, messageId);
+    msg.reactions ??= [];
+    const key = emoji.id ?? emoji.name;
+    let r = msg.reactions.find((x) => (x.emoji.id ?? x.emoji.name) === key);
+    if (!r) { r = { emoji: { id: emoji.id ?? null, name: emoji.name }, users: [] }; if (emoji.animated) r.emoji.animated = true; msg.reactions.push(r); }
+    if (r.users.includes(userId)) return false;
+    r.users.push(userId);
+    const d = { user_id: userId, channel_id: channelId, message_id: messageId, emoji: { ...r.emoji }, message_author_id: msg.author_id, burst: false, type: 0 };
+    if (msg.guild_id) { d.guild_id = msg.guild_id; const m = this.w.memberJSON(msg.guild_id, userId); if (m) d.member = m; }
+    // https://discord.com/developers/docs/events/gateway-events#message-reaction-add
+    this.dispatch('MESSAGE_REACTION_ADD', d, this.reactionTarget(msg));
+    return true;
+  }
+
+  removeReaction(channelId, messageId, userId, emoji) {
+    const msg = this.w.message(channelId, messageId);
+    const key = emoji.id ?? emoji.name;
+    const r = msg.reactions?.find((x) => (x.emoji.id ?? x.emoji.name) === key);
+    if (!r || !r.users.includes(userId)) return false;
+    r.users = r.users.filter((u) => u !== userId);
+    if (!r.users.length) msg.reactions = msg.reactions.filter((x) => x !== r);
+    const d = { user_id: userId, channel_id: channelId, message_id: messageId, emoji: { ...r.emoji }, burst: false, type: 0 };
+    if (msg.guild_id) d.guild_id = msg.guild_id;
+    this.dispatch('MESSAGE_REACTION_REMOVE', d, this.reactionTarget(msg));
+    return true;
+  }
+
+  removeAllReactions(channelId, messageId) {
+    const msg = this.w.message(channelId, messageId);
+    msg.reactions = [];
+    const d = { channel_id: channelId, message_id: messageId };
+    if (msg.guild_id) d.guild_id = msg.guild_id;
+    this.dispatch('MESSAGE_REACTION_REMOVE_ALL', d, this.reactionTarget(msg));
+  }
+
+  removeEmojiReactions(channelId, messageId, emoji) {
+    const msg = this.w.message(channelId, messageId);
+    const key = emoji.id ?? emoji.name;
+    const r = msg.reactions?.find((x) => (x.emoji.id ?? x.emoji.name) === key);
+    if (!r) return false;
+    msg.reactions = msg.reactions.filter((x) => x !== r);
+    const d = { channel_id: channelId, message_id: messageId, emoji: { ...r.emoji } };
+    if (msg.guild_id) d.guild_id = msg.guild_id;
+    this.dispatch('MESSAGE_REACTION_REMOVE_EMOJI', d, this.reactionTarget(msg));
+    return true;
+  }
+
   openDM(userA, userB) {
     let c = this.w.dmChannelBetween(userA, userB);
     if (c) return c;
