@@ -1028,6 +1028,19 @@ export class Ops {
     return inv;
   }
 
+  deleteInvite(code, { actorId, reason } = {}) {
+    const inv = this.w.state.invites[code];
+    delete this.w.state.invites[code];
+    this.audit(inv.guild_id, { actorId, action_type: A.INVITE_DELETE, target_id: null, reason, changes: [
+      { key: 'code', old_value: inv.code }, { key: 'channel_id', old_value: inv.channel_id },
+      ...(inv.inviter_id ? [{ key: 'inviter_id', old_value: inv.inviter_id }] : []),
+      { key: 'max_uses', old_value: inv.max_uses }, { key: 'uses', old_value: inv.uses }, { key: 'max_age', old_value: inv.max_age }, { key: 'temporary', old_value: inv.temporary },
+    ] });
+    // https://discord.com/developers/docs/events/gateway-events#invite-delete
+    this.dispatch('INVITE_DELETE', { channel_id: inv.channel_id, guild_id: inv.guild_id, code }, { guildId: inv.guild_id, channelId: inv.channel_id });
+    return inv;
+  }
+
   // ---- AutoMod ---------------------------------------------------------------
   // https://discord.com/developers/docs/resources/auto-moderation
   runAutoMod(guildId, channelId, msg) {

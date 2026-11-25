@@ -5,6 +5,7 @@ import { registerChannelRoutes } from './rest/channels.js';
 import { registerMessageExtras } from './rest/messages-extra.js';
 import { registerExpressionRoutes } from './rest/expressions.js';
 import { registerWebhookRoutes } from './rest/webhooks.js';
+import { registerInviteRoutes } from './rest/invites.js';
 import { registerThreadRoutes } from './rest/threads.js';
 import { registerScheduledEventRoutes } from './rest/scheduled-events.js';
 import { registerAppRoutes } from './rest/apps.js';
@@ -40,6 +41,7 @@ export class FakeServer {
     registerChannelRoutes(this.router);
     registerMessageExtras(this.router);
     registerExpressionRoutes(this.router);
+    registerInviteRoutes(this.router);
     registerThreadRoutes(this.router);
     registerScheduledEventRoutes(this.router);
     registerWebhookRoutes(this.router); // before interactions.register: same URLs, falls through to interaction webhooks
